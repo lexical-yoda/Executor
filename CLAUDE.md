@@ -1,13 +1,13 @@
 # Executor: rules for working in this repo
 
-Read `README.md` first; its "Security model" section is binding. Machine-specific
-details (addresses, paths, deployment steps) are in `CLAUDE.local.md`, which is
-git-ignored.
+Read `README.md` first; its "Security model" section is binding. If present, also
+read the git-ignored `PLAN.local.md` (plan, decisions, state and history) and
+`CLAUDE.local.md` (machine-specific details and deployment steps).
 
 - **This repo and its image are public.** Never commit anything that describes a
   real network: addresses, domains, hostnames, host paths, service lists. Those
   belong only in the git-ignored files (`deploy/config/config.yaml`,
-  `deploy/config/actions.yaml`, `dev/config.yaml`, `.env`, `CLAUDE.local.md`).
+  `deploy/config/actions.yaml`, `dev/config.yaml`, `.env`, `*.local.md`).
   Examples and tests use placeholder addresses (`10.8.0.0/24`, `192.168.0.0/24`)
   and `example.com`.
 - **Never bake configuration or secrets into the image.** `.dockerignore`
