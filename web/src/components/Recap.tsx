@@ -42,9 +42,9 @@ function Delta({ now, before, unit = '' }: { now: number; before: number; unit?:
 
 function hourName(hour: number | null): string | null {
   if (hour == null) return null
-  const d = new Date()
-  d.setHours(hour, 0, 0, 0)
-  return d.toLocaleTimeString(undefined, { hour: 'numeric' })
+  if (hour === 0) return 'Midnight'
+  if (hour === 12) return 'Noon'
+  return `${hour % 12} ${hour < 12 ? 'AM' : 'PM'}`
 }
 
 /** The headline numbers of the week, for the bridge tile. */

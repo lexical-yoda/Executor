@@ -4384,3 +4384,10 @@ ul.recap-list {
     grid-template-columns: 1fr;
   }
 }
+
+.alert-chip .dot,
+.alert-item .dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+}
