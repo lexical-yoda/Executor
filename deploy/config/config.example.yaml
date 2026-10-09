@@ -1,0 +1,110 @@
+# Example Executor configuration. Copy to config.yaml and edit.
+# config.yaml is git-ignored: it describes your network, so keep it private.
+# Read by the web container. No secrets belong in this file.
+#
+# The addresses below are placeholders:
+#   10.8.0.0/24     a WireGuard network, hub at 10.8.0.1
+#   192.168.0.0/24  the home LAN
+#   10.8.0.10       the Docker host Executor runs on
+
+security:
+  # Only these clients can open the dashboard. Everything else gets 403.
+  allowed_clients:
+    - 10.8.0.2/32      # laptop
+    - 10.8.0.3/32      # phone
+  # Always refused, even if inside an allowed network. List the WireGuard hub
+  # (it faces the internet) and the LAN (guests, IoT devices).
+  denied_clients:
+    - 10.8.0.1/32
+    - 192.168.0.0/24
+  # Host header values accepted, without the port. Use the address you type
+  # into the browser.
+  allowed_hosts:
+    - 10.8.0.10
+
+site:
+  title: Executor
+  subtitle: Command deck
+
+settings:
+  check_interval: 20      # seconds between service probes
+  ping_interval: 15       # seconds between machine pings
+  container_interval: 10  # seconds between container state reads
+
+# Display order of service groups. Groups not listed here follow in order of use.
+groups:
+  - Media
+  - Downloads
+  - Network & Infra
+  - Public edge
+
+# icon: server | cloud | laptop | phone | desktop | gamepad | router
+machines:
+  - id: nas
+    name: NAS
+    role: Storage and services
+    address: 10.8.0.10
+    icon: server
+    local: true          # the host Executor runs on; reports load, memory, uptime
+  - id: vps
+    name: VPS
+    role: WireGuard hub, reverse proxy
+    address: 10.8.0.1
+    icon: cloud
+  - id: laptop
+    name: Laptop
+    role: Main laptop
+    address: 10.8.0.2
+    icon: laptop
+  - id: phone
+    name: Phone
+    role: Phone
+    address: 10.8.0.3
+    icon: phone
+  - id: desktop
+    name: Desktop
+    role: Gaming PC, LAN only
+    address: 192.168.0.50
+    icon: gamepad
+
+# Probes run from inside the container. host.docker.internal is the Docker host.
+# check.expect lists HTTP statuses that count as up; without it, anything
+# below 500 counts, since a login redirect still proves the app is alive.
+# containers: the first one is primary; if it is not running the service is down.
+services:
+  - id: jellyfin
+    name: Jellyfin
+    group: Media
+    url: https://media.example.com
+    check: { url: "http://host.docker.internal:8096/health", expect: [200] }
+    containers: [jellyfin]
+
+  - id: gluetun
+    name: Gluetun VPN
+    group: Downloads
+    description: VPN tunnel for the download stack
+    containers: [gluetun]          # no probe: container state only
+  - id: sonarr
+    name: Sonarr
+    group: Downloads
+    url: http://10.8.0.10:8989
+    check: { url: "http://host.docker.internal:8989/ping", expect: [200] }
+    containers: [sonarr]
+
+  - id: nextcloud
+    name: Nextcloud
+    group: Network & Infra
+    url: https://cloud.example.com
+    check: { url: "https://host.docker.internal:443/status.php", expect: [200], verify_tls: false }
+    containers: [nextcloud]
+  - id: mail-bridge
+    name: Mail bridge
+    group: Network & Infra
+    check: { type: tcp, host: host.docker.internal, port: 8025 }
+    containers: [mailrise]
+
+  - id: status-page
+    name: Status page
+    group: Public edge
+    url: https://status.example.com
+    check: { url: "https://status.example.com/" }

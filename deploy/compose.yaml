@@ -1,0 +1,75 @@
+# Executor stack. Every host path comes from .env (see .env.example), so this
+# file holds nothing specific to one machine. Use absolute paths in .env:
+# some stack managers resolve relative paths inside their own container.
+#
+# Layout on the host:
+#   $EXECUTOR_DIR/compose.yaml          this file
+#   $EXECUTOR_DIR/.env                  secrets and paths
+#   $EXECUTOR_DIR/config/config.yaml    from config.example.yaml
+#   $EXECUTOR_DIR/config/actions.yaml   from actions.example.yaml
+
+services:
+  executor:
+    image: ghcr.io/lexical-yoda/executor:latest
+    container_name: executor
+    command: ["web"]
+    user: "10001:10001"
+    ports:
+      - "${EXECUTOR_PORT:-1977}:1977"
+    environment:
+      RUNNER_TOKEN: ${RUNNER_TOKEN:?set RUNNER_TOKEN in .env}
+      RUNNER_URL: http://executor-runner:8001
+      EXECUTOR_CONFIG: /config/config.yaml
+      TZ: ${TZ:-UTC}
+    volumes:
+      - ${EXECUTOR_DIR:?set EXECUTOR_DIR in .env}/config/config.yaml:/config/config.yaml:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    sysctls:
+      # Lets the unprivileged web process send ICMP pings.
+      net.ipv4.ping_group_range: "0 2147483647"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    networks: [default, internal]
+    depends_on: [executor-runner]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:1977/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    mem_limit: 256m
+    restart: unless-stopped
+
+  executor-runner:
+    image: ghcr.io/lexical-yoda/executor:latest
+    container_name: executor-runner
+    command: ["runner"]
+    environment:
+      RUNNER_TOKEN: ${RUNNER_TOKEN:?set RUNNER_TOKEN in .env}
+      EXECUTOR_ACTIONS: /config/actions.yaml
+      RUNNER_DATA: /data
+      TZ: ${TZ:-UTC}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${EXECUTOR_DIR:?set EXECUTOR_DIR in .env}/config/actions.yaml:/config/actions.yaml:ro
+      - ${EXECUTOR_DATA:?set EXECUTOR_DATA in .env}:/data
+      # Stacks that actions run compose against, read-only and at the same path
+      # as on the host, so compose project names and .env files resolve unchanged.
+      - ${STACKS_DIR:?set STACKS_DIR in .env}:${STACKS_DIR}:ro
+    # Internal network only: nothing outside this stack can reach the runner.
+    networks: [internal]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    mem_limit: 256m
+    restart: unless-stopped
+
+networks:
+  internal:
+    internal: true

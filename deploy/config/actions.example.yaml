@@ -1,0 +1,33 @@
+# Example actions. Copy to actions.yaml and edit.
+# actions.yaml is git-ignored and read only by the runner container.
+#
+# Each step is either `run` (an argument list, never a shell string) or
+# `wait_healthy` (a container name). Steps run in order and stop at the first
+# failure. `cwd` must be inside STACKS_DIR, which the runner mounts read-only
+# at the same path as on the host.
+
+actions:
+  - id: reset-download-stack
+    title: Reset download stack
+    description: >-
+      Full down and up of the VPN download stack, then a restart of Sonarr and
+      Radarr once the VPN container reports healthy.
+    confirm: >-
+      The download clients and indexers go offline for about a minute while
+      the stack is recreated.
+    danger: medium            # low | medium | high: colours the button
+    steps:
+      - name: Stop the stack
+        run: [docker, compose, down]
+        cwd: /srv/stacks/downloads
+        timeout: 180
+      - name: Start the stack
+        run: [docker, compose, up, --detach]
+        cwd: /srv/stacks/downloads
+        timeout: 420
+      - name: Wait for the VPN to be healthy
+        wait_healthy: gluetun
+        timeout: 300
+      - name: Restart Sonarr and Radarr
+        run: [docker, restart, sonarr, radarr]
+        timeout: 120

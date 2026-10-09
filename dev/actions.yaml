@@ -1,0 +1,24 @@
+# Harmless actions for local development.
+actions:
+  - id: demo
+    title: Demo action
+    description: Prints a few lines with pauses, to exercise the run console.
+    confirm: Nothing real happens; this only echoes text.
+    danger: low
+    steps:
+      - name: Say hello
+        run: [sh, -c, "echo hello; sleep 1; echo from the runner"]
+      - name: Count
+        run: [sh, -c, "for i in 1 2 3 4 5; do echo tick $i; sleep 0.5; done"]
+  - id: demo-fail
+    title: Demo failure
+    description: Fails on its second step.
+    confirm: Nothing real happens.
+    danger: high
+    steps:
+      - name: Works
+        run: [sh, -c, "echo fine"]
+      - name: Breaks
+        run: [sh, -c, "echo about to fail; exit 3"]
+      - name: Never runs
+        run: [sh, -c, "echo unreachable"]

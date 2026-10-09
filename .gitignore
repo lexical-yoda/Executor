@@ -1,0 +1,15 @@
+# Private: these describe a real network or hold secrets. Never commit them.
+.env
+deploy/.env
+deploy/config/config.yaml
+deploy/config/actions.yaml
+dev/config.yaml
+CLAUDE.local.md
+
+# Build and tooling
+.venv/
+__pycache__/
+.pytest_cache/
+web/node_modules/
+web/dist/
+.DS_Store

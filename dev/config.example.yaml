@@ -1,0 +1,36 @@
+# Local development config. Copy to dev/config.yaml (git-ignored) and point the
+# probes at real services you can reach from your machine, for example over
+# WireGuard. dev/actions.yaml holds harmless demo actions.
+
+security:
+  allowed_clients: [127.0.0.1/32, "::1/128"]
+  allowed_hosts: [localhost, 127.0.0.1]
+
+site:
+  title: Executor
+  subtitle: Command deck (dev)
+
+settings:
+  check_interval: 10
+  ping_interval: 10
+  container_interval: 5
+
+groups: [Media, Public edge]
+
+machines:
+  - { id: nas, name: NAS, role: Storage and services, address: 10.8.0.10, icon: server }
+  - { id: vps, name: VPS, role: "WireGuard hub, reverse proxy", address: 10.8.0.1, icon: cloud }
+  - { id: laptop, name: Laptop, role: This machine, address: 127.0.0.1, icon: laptop }
+
+services:
+  - id: jellyfin
+    name: Jellyfin
+    group: Media
+    url: https://media.example.com
+    check: { url: "http://10.8.0.10:8096/health", expect: [200] }
+    containers: [jellyfin]
+  - id: status-page
+    name: Status page
+    group: Public edge
+    url: https://status.example.com
+    check: { url: "https://status.example.com/" }
