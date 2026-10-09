@@ -318,3 +318,29 @@ def test_a_vague_answer_gives_way_to_a_city_inside_it():
     assert inside["city"] == "Kochi" and inside["within"] == {"source": "geolite2", "km": 500}
     outside = Locator([Vague(name="geolite2"), FakeSource(far, name="dbip")]).locate("203.0.113.10")
     assert outside["city"] == "Bengaluru"
+
+
+def test_household_block_pinned_devices_and_home_corrections():
+    from executor.config import Household
+
+    home = {"city": "Home", "lat": 1.0, "lon": 2.0, "source": "home"}
+    pinned = LocationCorrection(city="Parents", lat=7.0, lon=8.0, user_devices=[{"user": "alice", "device": "TV box"}])
+    desk = LocationCorrection(home=True, user_devices=[{"user": "alice", "device": "Desktop"}])
+    geo = Locator([FakeSource()], Corrections([pinned, desk]), home, Household(users=["Alice"], prefix_v4=20))
+    geo.home_ip = "203.0.113.10"
+    # The server's own address is home for anyone.
+    assert geo.locate("203.0.113.10", "bob", "Phone")["city"] == "Home"
+    # A household user elsewhere in the same /20 block is home; someone else there is not.
+    assert geo.locate("203.0.120.5", "alice", "Phone")["city"] == "Home"
+    assert geo.locate("203.0.120.5", "bob", "Phone") is None  # not home; the fake databases do not know it
+    assert geo.locate("198.51.100.7", "alice", "Phone")["city"] == "Dubai"
+    # Pinned devices win, even from the home address; only that user's device matches.
+    assert geo.locate("203.0.113.10", "alice", "tv box")["city"] == "Parents"
+    assert geo.locate("198.51.100.7", "bob", "TV box")["city"] == "Dubai"
+    assert geo.locate("198.51.100.7", "alice", "Desktop")["city"] == "Home"
+    # A home correction needs no place of its own; any other correction does.
+    import pytest
+
+    with pytest.raises(ValueError):
+        LocationCorrection(users=["alice"])
+    assert "household" in geo.signature

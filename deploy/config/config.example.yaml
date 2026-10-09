@@ -71,6 +71,12 @@ integrations:
     home_ip_url: https://api.ipify.org
     # Known places that beat the geolocation databases. Matched by a Jellyfin
     # device name, then by network, then by a user who is always there.
+    # Optional. When the provider gives each device at home its own public
+    # address from a shared block (carrier-grade NAT), these users' sessions
+    # from the same block as the server's own address count as home.
+    household:
+      users: [alice]
+      prefix_v4: 20
     corrections:
       - city: Amsterdam
         country: Netherlands
@@ -80,6 +86,9 @@ integrations:
         networks: [198.51.100.0/24]
         devices: [Living Room TV]
         users: []
+      # One user's device (devices match a name for anyone), placed at Home.
+      - home: true
+        user_devices: [{user: alice, device: Desktop}]
   # Optional. Media panels: Jellyseerr requests, Sonarr and Radarr queues, and
   # qBittorrent speeds. Keys and the qBittorrent login come from .env.
   media:

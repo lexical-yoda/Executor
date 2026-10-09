@@ -148,7 +148,7 @@ def main() -> None:
                     home = {"city": settings.origin.label, "region": None, "country": None, "country_code": None,
                             "lat": settings.origin.lat, "lon": settings.origin.lon, "radius_km": None,
                             "source": "home"}
-                geo = Locator(sources, Corrections(settings.corrections), home)
+                geo = Locator(sources, Corrections(settings.corrections), home, settings.household)
             elif settings.history_days:
                 logging.getLogger("executor").warning(
                     "location history off: %s is missing or not writable", data)

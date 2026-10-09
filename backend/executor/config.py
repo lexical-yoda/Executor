@@ -123,17 +123,26 @@ class MapPoint(BaseModel):
     machine: Slug | None = None
 
 
+class UserDevice(BaseModel):
+    user: str
+    device: str
+
+
 class LocationCorrection(BaseModel):
     # A known place that beats the geolocation databases. Matches, most
-    # specific first: a Jellyfin device name, an address in one of the
-    # networks, or a Jellyfin user who is always in this place.
-    city: str
+    # specific first: one user's device, a Jellyfin device name, an address
+    # in one of the networks, or a Jellyfin user who is always in this place.
+    # With `home: true` the place is the configured origin (Home) and needs
+    # no city or coordinates of its own.
+    home: bool = False
+    city: str | None = None
     region: str | None = None
     country: str | None = None
     country_code: str | None = None
-    lat: float = Field(ge=-90, le=90)
-    lon: float = Field(ge=-180, le=180)
+    lat: float | None = Field(default=None, ge=-90, le=90)
+    lon: float | None = Field(default=None, ge=-180, le=180)
     networks: list[str] = []
+    user_devices: list[UserDevice] = []
     devices: list[str] = []
     users: list[str] = []
 
@@ -143,6 +152,21 @@ class LocationCorrection(BaseModel):
         for item in value:
             ipaddress.ip_network(item, strict=False)
         return value
+
+    @model_validator(mode="after")
+    def _place(self) -> LocationCorrection:
+        if not self.home and (self.city is None or self.lat is None or self.lon is None):
+            raise ValueError("a correction needs city, lat and lon, or home: true")
+        return self
+
+
+class Household(BaseModel):
+    # Providers behind carrier-grade NAT can give every device at home its own
+    # public address from a shared block, so the server's own address misses
+    # the rest of the house. These users' sessions from the same block as the
+    # server's address (this many leading bits) count as home.
+    users: list[str]
+    prefix_v4: int = Field(default=20, ge=8, le=32)
 
 
 class JellyfinIntegration(BaseModel):
@@ -163,6 +187,7 @@ class JellyfinIntegration(BaseModel):
     # the same home as the server, so they are placed at `origin`. Checked
     # hourly; off when unset.
     home_ip_url: str | None = None
+    household: Household | None = None
     # Jellyfin library name -> id of a folder under `sizes:` in actions.yaml,
     # whose size the runner measures (Jellyfin knows few file sizes itself).
     library_folders: dict[str, Slug] = {}

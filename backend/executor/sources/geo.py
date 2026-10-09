@@ -32,14 +32,18 @@ import tarfile
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import httpx
 import maxminddb
 
+if TYPE_CHECKING:
+    from ..config import Household
+
 log = logging.getLogger("executor.geo")
 
 # Bump when the way answers are chosen changes, so history is located again.
-RULES = "2"
+RULES = "3"
 # A GeoLite2 answer this vague (km) is an area, not a city: a city another
 # database names inside that area is the better guess.
 VAGUE_KM = 200
@@ -253,17 +257,31 @@ class Corrections:
     def __init__(self, rules: list) -> None:
         self.rules = []
         for rule in rules:
-            place = {"city": rule.city, "region": rule.region, "country": rule.country,
-                     "country_code": rule.country_code, "lat": rule.lat, "lon": rule.lon,
-                     "radius_km": None, "source": "correction"}
+            place = {"home": True} if rule.home else {
+                "city": rule.city, "region": rule.region, "country": rule.country,
+                "country_code": rule.country_code, "lat": rule.lat, "lon": rule.lon,
+                "radius_km": None, "source": "correction"}
             self.rules.append((
                 place,
                 [ipaddress.ip_network(n, strict=False) for n in rule.networks],
                 {d.casefold() for d in rule.devices},
                 {u.casefold() for u in rule.users},
+                {(d.user.casefold(), d.device.casefold()) for d in rule.user_devices},
             ))
         self.signature = hashlib.sha256(json.dumps([r.model_dump() for r in rules], sort_keys=True,
                                                    default=str).encode()).hexdigest()[:12]
+
+    def match_device(self, user: str | None, device: str | None) -> dict | None:
+        """One user's device, then a device name: these beat even the home address."""
+        if device:
+            pair = ((user or "").casefold(), device.casefold())
+            for place, _, _, _, pairs in self.rules:
+                if pair in pairs:
+                    return dict(place)
+            for place, _, devices, _, _ in self.rules:
+                if device.casefold() in devices:
+                    return dict(place)
+        return None
 
     def match(self, ip: str | None, user: str | None, device: str | None) -> dict | None:
         try:
@@ -271,13 +289,13 @@ class Corrections:
         except ValueError:
             address = None
         # Most specific first: a device, then a network, then a user who is always in one place.
-        for place, _, devices, _ in self.rules:
-            if device and device.casefold() in devices:
-                return dict(place)
-        for place, networks, _, _ in self.rules:
+        found = self.match_device(user, device)
+        if found:
+            return found
+        for place, networks, _, _, _ in self.rules:
             if address and any(address in n for n in networks):
                 return dict(place)
-        for place, _, _, users in self.rules:
+        for place, _, _, users, _ in self.rules:
             if user and user.casefold() in users:
                 return dict(place)
         return None
@@ -285,12 +303,14 @@ class Corrections:
 
 class Locator:
     def __init__(self, sources: list[MmdbSource], corrections: Corrections | None = None,
-                 home: dict | None = None) -> None:
+                 home: dict | None = None, household: Household | None = None) -> None:
         self.sources = sources  # in order of preference
         self.corrections = corrections or Corrections([])
         # The server's own public address and where it is (the configured origin).
         self.home = home
         self.home_ip: str | None = None
+        self.household = household
+        self._household_users = {u.casefold() for u in household.users} if household else set()
 
     @property
     def ready(self) -> bool:
@@ -300,7 +320,8 @@ class Locator:
     def signature(self) -> str:
         """Changes whenever a different answer could come out, so history can be relocated."""
         parts = [f"{s.name}:{s.version if s.ready else '-'}" for s in self.sources]
-        return "|".join(parts + [self.corrections.signature, RULES])
+        household = f"household:{sorted(self._household_users)}/{self.household.prefix_v4}" if self.household else ""
+        return "|".join(parts + [self.corrections.signature, household, RULES])
 
     async def ensure(self) -> None:
         for source in self.sources:
@@ -308,11 +329,18 @@ class Locator:
 
     def locate(self, ip: str | None, user: str | None = None, device: str | None = None) -> dict | None:
         address = (ip or "").strip().split("%")[0] or None
-        if self.home and address and address == self.home_ip:
-            return dict(self.home)
-        fixed = self.corrections.match(address, user, device)
+        # A device pinned to a place wins over everything, even the home address.
+        fixed = self.corrections.match_device(user, device)
+        if fixed is None:
+            if self.home and address and address == self.home_ip:
+                return dict(self.home)
+            fixed = self.corrections.match(address, user, device)
+        if fixed and fixed.get("home"):
+            return dict(self.home) if self.home else None
         if fixed:
             return fixed
+        if self.in_household_block(address, user):
+            return dict(self.home)
         answers = [a for a in (s.lookup(ip) for s in self.sources if s.ready) if a]
         if not answers:
             return None
@@ -324,6 +352,22 @@ class Locator:
                 if other.get("city") and distance_km(best, other) <= radius:
                     return {**other, "radius_km": None, "within": {"source": best["source"], "km": radius}}
         return best
+
+    def in_household_block(self, address: str | None, user: str | None) -> bool:
+        """A household user on the same provider block as the server's own address."""
+        if not (self.home and self.household and self.home_ip and address and user):
+            return False
+        if user.casefold() not in self._household_users:
+            return False
+        try:
+            here = ipaddress.ip_address(address)
+            home = ipaddress.ip_address(self.home_ip)
+        except ValueError:
+            return False
+        if here.version != 4 or home.version != 4:
+            return False
+        block = ipaddress.ip_network(f"{home}/{self.household.prefix_v4}", strict=False)
+        return here in block
 
     def second_opinion(self, ip: str | None, primary: dict | None) -> dict | None:
         """Another database's answer, when it names a different city."""

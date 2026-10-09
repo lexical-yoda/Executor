@@ -267,12 +267,17 @@ folder, Executor also keeps a location history:
   free account; refreshed weekly; it also estimates its own error, drawn as a
   faint circle), then DB-IP Lite. When they name different cities, the
   stream's details show the second opinion.
-- Places you know beat any database: `corrections` in `config.yaml` match a
-  Jellyfin device name, a network, or a user who is always in one place, and
-  with `home_ip_url` the server learns its own public address hourly and
-  places sessions from it at `origin`. When a database update or a changed
-  correction could move places, the whole history is located again (sessions
-  placed at home stay there).
+- Places you know beat any database: `corrections` in `config.yaml` match
+  one user's device (`user_devices`, which wins even over the home address),
+  a Jellyfin device name, a network, or a user who is always in one place;
+  `home: true` places the match at `origin`. With `home_ip_url` the server
+  learns its own public address hourly and places sessions from it at
+  `origin`. Behind carrier-grade NAT every device at home may get its own
+  public address from a shared block: `household` lists users whose sessions
+  from the same block as the server's address (`prefix_v4` leading bits)
+  also count as home. When a database update or a changed correction could
+  move places, the whole history is located again (sessions placed at home
+  stay there).
 - History older than `history_days` is deleted daily.
 - `GET /api/media/users`, `/api/media/places` and `/api/media/trail` serve
   the history to the page.
