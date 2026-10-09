@@ -122,6 +122,16 @@ class Monitor:
                 self.stack_memory = {}
         self.plan: Plan = plan(config.services, None, None, self.stack_memory, config.discovery)
         self._plan_seen: set[str] | None = None
+        # Names, groups, links and visibility set from the page; they win over the config.
+        self.overrides: dict[str, dict] = {}
+        # Group order set from the page; groups not in it follow in their usual order.
+        self.group_order: list[str] = []
+        if store:
+            try:
+                self.overrides = store.overrides()
+                self.group_order = json.loads(store.get_state("group_order") or "[]")
+            except Exception as exc:  # noqa: BLE001
+                log.warning("cannot read page settings: %s", exc)
         self.watching: list[dict] = []
         self.watching_error: str | None = None
         self.watching_checked: float | None = None
@@ -232,12 +242,112 @@ class Monitor:
             client = self._http if check.verify_tls else self._http_insecure
             self.probes[service.id] = await http_probe(check, client)
 
-    # --- services: configured plus discovered ---------------------------------
-    def services(self) -> list[Service]:
+    # --- services: configured plus discovered, with the page's overrides ------
+    def _all_services(self) -> list[Service]:
+        """Every service in the plan as configured or discovered, before overrides."""
         return [s for s, _ in self.plan.configured] + [s for s, _, _ in self.plan.discovered]
 
+    def _apply(self, service: Service) -> Service:
+        override = self.overrides.get(service.id)
+        if not override:
+            return service
+        update = {k: override[k] for k in ("name", "group", "url") if override.get(k)}
+        return service.model_copy(update=update) if update else service
+
+    def services(self) -> list[Service]:
+        """The services the page shows: overrides applied, hidden ones left out."""
+        return [self._apply(s) for s in self._all_services() if not self.overrides.get(s.id, {}).get("hidden")]
+
     def service_ids(self) -> set[str]:
-        return {s.id for s in self.services()}
+        return {s.id for s in self._all_services()}
+
+    def set_override(self, service_id: str, *, name: str | None, group: str | None, url: str | None,
+                     hidden: bool) -> None:
+        """Place a service from the page (and log what changed)."""
+        assert self.store is not None
+        before = self._apply(next(s for s in self._all_services() if s.id == service_id))
+        was_hidden = bool(self.overrides.get(service_id, {}).get("hidden"))
+        self.store.set_override(service_id, name=name, group=group, url=url, hidden=hidden)
+        self.overrides[service_id] = {"name": name, "group": group, "url": url, "hidden": hidden}
+        after = self._apply(next(s for s in self._all_services() if s.id == service_id))
+        self._log_placement(service_id, before, after, was_hidden, hidden)
+
+    def update_override(self, service_id: str, changes: dict) -> None:
+        """Change only the given fields of a service's placement, keeping the rest."""
+        current = {"name": None, "group": None, "url": None, "hidden": False, **self.overrides.get(service_id, {})}
+        merged = {**current, **changes}
+        if not merged["hidden"] and not any(merged[k] for k in ("name", "group", "url")):
+            self.clear_override(service_id)
+            return
+        self.set_override(service_id, name=merged["name"], group=merged["group"], url=merged["url"],
+                          hidden=bool(merged["hidden"]))
+
+    def groups(self) -> list[str]:
+        """Group order: the page's order first, then config order, then new groups, Discovered last."""
+        current = self.services()
+        present = [g for g in self.config.ordered_groups if any(s.group == g for s in current)]
+        for service in current:
+            if service.group not in present:
+                present.append(service.group)
+        if self.config.discovery and self.config.discovery.group in present:
+            present.remove(self.config.discovery.group)
+            present.append(self.config.discovery.group)
+        ordered = [g for g in self.group_order if g in present]
+        return ordered + [g for g in present if g not in ordered]
+
+    def set_group_order(self, order: list[str]) -> None:
+        assert self.store is not None
+        self.group_order = list(dict.fromkeys(order))
+        self.store.set_state("group_order", json.dumps(self.group_order))
+
+    def rename_group(self, old: str, new: str) -> int:
+        """Move every service now in group ``old`` to ``new``; returns how many moved."""
+        moved = [s.id for s in self._all_services() if self._apply(s).group == old]
+        for service_id in moved:
+            self.update_override(service_id, {"group": new})
+        if old in self.group_order:
+            self.set_group_order([new if g == old else g for g in self.group_order])
+        return len(moved)
+
+    def settings_services(self) -> list[dict]:
+        """Every service, hidden ones included, for the settings page."""
+        visible = {s["id"]: s for s in (self._service(s) for s in self.services())}
+        rows = []
+        for base in self._all_services():
+            override = self.overrides.get(base.id, {})
+            row = visible.get(base.id) or {**self._service(self._apply(base)), "status": "unknown"}
+            rows.append({**row, "hidden": bool(override.get("hidden")),
+                         "override": {k: override.get(k) for k in ("name", "group", "url")} if override else None})
+        return rows
+
+    def clear_override(self, service_id: str) -> None:
+        assert self.store is not None
+        base = next((s for s in self._all_services() if s.id == service_id), None)
+        before = self._apply(base) if base else None
+        was_hidden = bool(self.overrides.get(service_id, {}).get("hidden"))
+        self.store.clear_override(service_id)
+        self.overrides.pop(service_id, None)
+        if base and before:
+            self._log_placement(service_id, before, base, was_hidden, False, reset=True)
+
+    def _log_placement(self, service_id: str, before: Service, after: Service, was_hidden: bool, hidden: bool,
+                       reset: bool = False) -> None:
+        ref = f"service:{service_id}"
+        if hidden and not was_hidden:
+            self.tracker.emit("service", "info", f"{after.name} hidden from the page", None, ref=ref)
+            return
+        if was_hidden and not hidden:
+            self.tracker.emit("service", "info", f"{after.name} shown again", None, ref=ref)
+        changes = []
+        if before.name != after.name:
+            changes.append(f"renamed from {before.name}")
+        if before.group != after.group:
+            changes.append(f"moved from {before.group} to {after.group}")
+        if before.url != after.url:
+            changes.append("link changed")
+        if changes or reset:
+            title = f"{after.name} back to its default placement" if reset else f"{after.name} edited"
+            self.tracker.emit("service", "info", title, "; ".join(changes) or None, ref=ref)
 
     def _stack_info(self, service: Service) -> tuple[bool, str | None, bool]:
         """(discovered, stack name, stopped) for one service in the current plan."""
@@ -251,12 +361,12 @@ class Monitor:
 
     def _replan(self) -> None:
         """Recompute which services show, and log stacks that appear or go."""
-        previous = {s.id: s.name for s in self.services()} | {i: i for i in self.plan.removed}
+        previous = {s.id: self._apply(s).name for s in self._all_services()} | {i: i for i in self.plan.removed}
         self.plan = plan(self.config.services, self.containers, self.stack_dirs, self.stack_memory,
                          self.config.discovery)
         if self.plan.learned and self.store:
             self._safely(self.store.set_state, "container_stacks", json.dumps(self.stack_memory))
-        current = {s.id: s.name for s in self.services()}
+        current = {s.id: self._apply(s).name for s in self._all_services()}
         if self._plan_seen is None:
             # The first full picture is the baseline.
             self._plan_seen = set(current)
@@ -624,6 +734,8 @@ class Monitor:
                 "error": probe.error, "last_seen": self.last_seen.get(machine.id)}
 
     def _service(self, service: Service) -> dict:
+        override = self.overrides.get(service.id)
+        base = next((s for s in self._all_services() if s.id == service.id), service) if override else service
         probe = self.probes.get(service.id)
         status, states = service_status(service, probe, self.containers)
         discovered, stack, stopped = self._stack_info(service)
@@ -645,6 +757,9 @@ class Monitor:
             "containers": states,
             "discovered": discovered,
             "stack": stack,
+            # Set from the page; "defaults" are what the config or Docker would say.
+            "edited": override is not None,
+            "defaults": {"name": base.name, "group": base.group, "url": base.url},
         }
 
     def snapshot(self) -> dict:
@@ -652,14 +767,7 @@ class Monitor:
         current = self.services()
         services = [self._service(s) for s in current]
         containers = list(self.containers.values()) if self.containers is not None else []
-        groups = list(self.config.ordered_groups)
-        for service in current:
-            if service.group not in groups:
-                groups.append(service.group)
-        if self.config.discovery and self.config.discovery.group in groups:
-            # Stacks nobody has placed yet come last.
-            groups.remove(self.config.discovery.group)
-            groups.append(self.config.discovery.group)
+        groups = self.groups()
         return {
             "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "site": self.config.site.model_dump(),
@@ -680,6 +788,9 @@ class Monitor:
             "beszel": {"configured": self.beszel is not None, "ok": self.beszel_error is None,
                        "error": self.beszel_error},
             "ledger": self.store is not None,
+            "editable": self.store is not None,
+            "hidden": [{"id": s.id, "name": self._apply(s).name, "group": self._apply(s).group}
+                       for s in self._all_services() if self.overrides.get(s.id, {}).get("hidden")],
             "edge": self._edge(),
             "backups": self._backups(),
             "media": self._media(),

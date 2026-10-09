@@ -9,6 +9,7 @@ import { Armory } from './decks/Armory'
 import { Bridge } from './decks/Bridge'
 import { Engineering } from './decks/Engineering'
 import { Holonet } from './decks/Holonet'
+import { Settings } from './decks/Settings'
 import { useNarrow, useNow, usePoll, usePresentation } from './hooks'
 import { type Deck, DECK_INFO, DECKS } from './route'
 import { ActionsProvider, AppProvider, useApp } from './state'
@@ -97,6 +98,7 @@ function Shell() {
             {deck === 'holonet' && <Holonet tour={attract} />}
             {deck === 'archives' && <Archives />}
             {deck === 'armory' && <Armory />}
+            {deck === 'settings' && <Settings />}
           </Guard>
         ) : (
           <div className="loading">
@@ -125,10 +127,10 @@ function Shell() {
 }
 
 export default function App() {
-  const { data: snapshot, error, updatedAt } = usePoll(api.status, 5000)
+  const { data: snapshot, error, updatedAt, refresh } = usePoll(api.status, 5000)
   const now = useNow(1000)
   return (
-    <AppProvider snapshot={snapshot} error={error} updatedAt={updatedAt} now={now}>
+    <AppProvider snapshot={snapshot} error={error} updatedAt={updatedAt} now={now} reload={refresh}>
       <ActionsProvider runnerOk={snapshot?.runner.ok ?? false}>
         <Shell />
       </ActionsProvider>

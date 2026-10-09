@@ -1,4 +1,4 @@
-import { Eye, EyeOff, Play, Square } from 'lucide-react'
+import { Eye, EyeOff, Play, Settings2, Square } from 'lucide-react'
 import type { Alert } from '../alerts'
 import { statusLine } from '../alerts'
 import { ago } from '../format'
@@ -36,7 +36,7 @@ export function Header({
   attract: boolean
   toggleAttract: () => void
 }) {
-  const { snapshot, error, updatedAt, now, stale, open } = useApp()
+  const { snapshot, error, updatedAt, now, stale, open, route, showDeck } = useApp()
   const s = snapshot?.summary
   const connected = !!snapshot && !error && !stale
   const line = snapshot ? statusLine(alerts, connected) : { tone: 'unknown' as const, text: error ? 'Cannot reach Executor' : 'Establishing link…' }
@@ -76,6 +76,17 @@ export function Header({
           <Meter label="Machines" value={s?.machines_up ?? 0} total={s?.machines_total ?? 0} known={!!s} />
           <Meter label="Containers" value={s?.containers_running ?? 0} total={s?.containers_total ?? 0} known={!!s?.containers_known} />
         </div>
+        {snapshot?.editable && (
+          <button
+            type="button"
+            className={`icon-btn${route.deck === 'settings' ? ' present-on' : ''}`}
+            onClick={() => showDeck(route.deck === 'settings' ? 'bridge' : 'settings')}
+            aria-pressed={route.deck === 'settings'}
+            title="Settings: names, groups and links of services"
+          >
+            <Settings2 size={16} />
+          </button>
+        )}
         <button
           type="button"
           className={`icon-btn${attract ? ' present-on' : ''}`}

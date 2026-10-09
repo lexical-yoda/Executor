@@ -102,10 +102,11 @@ export function DrawerHost() {
   }, [d, close])
 
   useEffect(() => {
-    document.documentElement.classList.toggle('drawer-open', !!d)
+    document.documentElement.classList.toggle('drawer-open', !!d && d.kind !== 'focus')
   }, [d])
 
-  if (!d) return null
+  // "focus" only tells the settings page which service to show; it has no drawer.
+  if (!d || d.kind === 'focus') return null
   return (
     <aside className="drawer" ref={panel} tabIndex={-1} role="dialog" aria-label="Details">
       <button type="button" className="icon-btn drawer-close" onClick={close} aria-label="Close details">

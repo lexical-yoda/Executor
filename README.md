@@ -91,6 +91,22 @@ actually runs instead of only what is listed:
 Configured services keep their names, groups, links and checks; discovery only
 adds around them.
 
+### Settings
+
+The gear button in the header opens the settings page (with a writable data
+folder). It lists every service, including discovered and hidden ones:
+
+- Rename a service, move it to another group (or a new one) or change its
+  link inline, or select several and move, hide, show or reset them at once.
+- Reorder groups, and rename a group, which moves every service in it.
+
+Changes apply at once and survive restarts. They are kept in Executor's own
+database, not written to `config.yaml` or compose files, which stay as the
+defaults; Reset brings those back, and every change goes to the event log.
+Health checks, a service's containers, machines and integrations stay in
+`config.yaml`. Actions stay in `actions.yaml` on purpose: whoever can change
+an action can run commands as root, so the page never edits them.
+
 ### Machine stats (optional, via Beszel)
 
 Machines with a `beszel:` name get a richer card from a

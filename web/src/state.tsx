@@ -9,6 +9,8 @@ interface AppState {
   now: number
   /** True when the last good update is too old to trust. */
   stale: boolean
+  /** Fetch the snapshot again now (after a change made from the page). */
+  reload: () => void
   route: Route
   go: (route: Route, replace?: boolean) => void
   showDeck: (deck: Deck) => void
@@ -30,12 +32,14 @@ export function AppProvider({
   error,
   updatedAt,
   now,
+  reload,
   children,
 }: {
   snapshot: Snapshot | null
   error: string | null
   updatedAt: number | null
   now: number
+  reload: () => void
   children: ReactNode
 }) {
   const { route, go } = useRoute()
@@ -55,8 +59,8 @@ export function AppProvider({
   const stale = updatedAt !== null && now - updatedAt > 20_000
 
   const value = useMemo(
-    () => ({ snapshot, error, updatedAt, now, stale, route, go, showDeck, open, openRef, close }),
-    [snapshot, error, updatedAt, now, stale, route, go, showDeck, open, openRef, close],
+    () => ({ snapshot, error, updatedAt, now, stale, reload, route, go, showDeck, open, openRef, close }),
+    [snapshot, error, updatedAt, now, stale, reload, route, go, showDeck, open, openRef, close],
   )
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }

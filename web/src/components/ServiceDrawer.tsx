@@ -1,4 +1,4 @@
-import { ExternalLink, Loader2 } from 'lucide-react'
+import { ExternalLink, Loader2, Settings2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api, type ServiceHistory } from '../api'
 import { ago, latency } from '../format'
@@ -57,7 +57,7 @@ function UptimeBars({ history }: { history: ServiceHistory }) {
 }
 
 export function ServiceDrawer({ id }: { id: string }) {
-  const { snapshot, now } = useApp()
+  const { snapshot, now, go } = useApp()
   const service = snapshot?.services.find((s) => s.id === id)
   const [hours, setHours] = useState(24)
   const [history, setHistory] = useState<ServiceHistory | null>(null)
@@ -90,9 +90,8 @@ export function ServiceDrawer({ id }: { id: string }) {
       {service.description && <p className="muted">{service.description}</p>}
       {service.discovered && (
         <p className="small muted discovered-note">
-          Found automatically from the {service.stack ? <span className="mono">{service.stack}</span> : 'Docker'} stack. Its
-          name, group, link and check come from Docker; add it to config.yaml, or put executor.name, executor.group or
-          executor.url labels in its compose file, to change them.
+          Found automatically from the {service.stack ? <span className="mono">{service.stack}</span> : 'Docker'} stack.
+          Rename it, move it to a group or give it a link in Settings.
         </p>
       )}
       {service.error === 'Stack stopped' && (
@@ -101,10 +100,26 @@ export function ServiceDrawer({ id }: { id: string }) {
           stack and it leaves the page.
         </p>
       )}
-      {service.url && (
-        <a className="btn btn-ghost btn-small" href={service.url} target="_blank" rel="noopener noreferrer">
-          <ExternalLink size={14} /> Open {service.name}
-        </a>
+      <div className="drawer-links">
+        {service.url && (
+          <a className="btn btn-ghost btn-small" href={service.url} target="_blank" rel="noopener noreferrer">
+            <ExternalLink size={14} /> Open {service.name}
+          </a>
+        )}
+        {snapshot?.editable && (
+          <button
+            type="button"
+            className="btn btn-ghost btn-small"
+            onClick={() => go({ deck: 'settings', drawer: { kind: 'focus', id: service.id } })}
+          >
+            <Settings2 size={14} /> Name, group or link
+          </button>
+        )}
+      </div>
+      {service.edited && service.defaults && (
+        <p className="small muted">
+          Placed from Settings; the config says {service.defaults.name} in {service.defaults.group}.
+        </p>
       )}
       <Facts
         items={[

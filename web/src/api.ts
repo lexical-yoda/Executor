@@ -23,7 +23,26 @@ export interface ServiceStatus {
   discovered?: boolean
   /** The compose stack a discovered service stands for. */
   stack?: string | null
+  /** Placed from the page (name, group or link changed there). */
+  edited?: boolean
+  /** What the config or Docker says, before any change from the page. */
+  defaults?: { name: string; group: string; url: string | null }
 }
+
+export interface Placement {
+  name: string | null
+  group: string | null
+  url: string | null
+  hidden: boolean
+}
+
+export interface SettingsService extends ServiceStatus {
+  hidden: boolean
+  /** Fields set from the page (null where the config or Docker decides). */
+  override: { name: string | null; group: string | null; url: string | null } | null
+}
+
+export type PlacementChanges = Partial<Placement>
 
 export interface MachineDetails {
   load?: number[]
@@ -110,6 +129,10 @@ export interface Snapshot {
   beszel: { configured: boolean; ok: boolean; error: string | null }
   /** Whether Executor keeps its own history (events, uptime, long-term stats, plays). */
   ledger: boolean
+  /** Whether services can be renamed, regrouped or hidden from the page. */
+  editable?: boolean
+  /** Services hidden from the page. */
+  hidden?: { id: string; name: string; group: string }[]
   edge: Edge | null
   backups: Backups | null
   media: Media | null
@@ -581,6 +604,38 @@ export const api = {
   recap: (days = 7) => request<Recap>(`/api/recap?days=${days}`),
   tilesets: () => request<{ tilesets: Tileset[] }>('/api/map/tilesets'),
   run: (id: string, offset: number) => request<RunDetail>(`/api/runs/${id}?offset=${offset}`),
+  settingsServices: () =>
+    request<{ services: SettingsService[]; groups: string[]; default_group: string | null }>('/api/settings/services'),
+  changeServices: (ids: string[], changes: PlacementChanges | null, reset = false) =>
+    request<{ ok: boolean; count: number }>('/api/settings/services', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Executor': '1' },
+      body: JSON.stringify(reset ? { ids, reset: true } : { ids, changes }),
+    }),
+  orderGroups: (order: string[]) =>
+    request<{ ok: boolean; groups: string[] }>('/api/settings/groups', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'X-Executor': '1' },
+      body: JSON.stringify({ order }),
+    }),
+  renameGroup: (old: string, name: string) =>
+    request<{ ok: boolean; moved: number }>('/api/settings/groups/rename', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Executor': '1' },
+      body: JSON.stringify({ old, new: name }),
+    }),
+  placeService: (id: string, placement: Placement) =>
+    request<{ ok: boolean }>(`/api/services/${encodeURIComponent(id)}/override`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'X-Executor': '1' },
+      body: JSON.stringify(placement),
+    }),
+  resetService: (id: string) =>
+    request<{ ok: boolean }>(`/api/services/${encodeURIComponent(id)}/override`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', 'X-Executor': '1' },
+      body: '{}',
+    }),
   start: (id: string) =>
     request<RunDetail>(`/api/actions/${encodeURIComponent(id)}/run`, {
       method: 'POST',

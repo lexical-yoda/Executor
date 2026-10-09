@@ -12,6 +12,9 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+from typing import Annotated
+
+from pydantic import BaseModel, Field, StringConstraints, field_validator
 
 from .config import Config
 from .history import MediaHistory
@@ -26,6 +29,85 @@ from .sources.media import MediaSources
 from .store import Store
 
 log = logging.getLogger("executor.web")
+
+
+class Changes(BaseModel):
+    """Some fields of a service's placement; fields left out stay as they are."""
+    name: str | None = Field(default=None, max_length=60)
+    group: str | None = Field(default=None, max_length=40)
+    url: str | None = Field(default=None, max_length=300)
+    hidden: bool | None = None
+
+    model_config = {"extra": "forbid"}
+
+    @field_validator("name", "group", "url", mode="before")
+    @classmethod
+    def _blank_is_none(cls, value):
+        if isinstance(value, str):
+            value = " ".join(value.split())
+            return value or None
+        return value
+
+    @field_validator("url")
+    @classmethod
+    def _web_link(cls, value: str | None) -> str | None:
+        if value is not None and not value.lower().startswith(("http://", "https://")):
+            raise ValueError("the link must start with http:// or https://")
+        return value
+
+
+class Bulk(BaseModel):
+    """The same change, or a reset, for several services at once."""
+    ids: list[str] = Field(min_length=1, max_length=200)
+    changes: Changes | None = None
+    reset: bool = False
+
+    model_config = {"extra": "forbid"}
+
+
+class GroupOrder(BaseModel):
+    order: list[Annotated[str, StringConstraints(min_length=1, max_length=40)]] = Field(max_length=100)
+
+    model_config = {"extra": "forbid"}
+
+
+class GroupRename(BaseModel):
+    old: str = Field(min_length=1, max_length=40)
+    new: str = Field(min_length=1, max_length=40)
+
+    model_config = {"extra": "forbid"}
+
+    @field_validator("new", mode="before")
+    @classmethod
+    def _tidy(cls, value):
+        return " ".join(value.split()) if isinstance(value, str) else value
+
+
+class Placement(BaseModel):
+    """A service's name, group, link and visibility as set from the page.
+    Empty fields fall back to the config or Docker."""
+    name: str | None = Field(default=None, max_length=60)
+    group: str | None = Field(default=None, max_length=40)
+    url: str | None = Field(default=None, max_length=300)
+    hidden: bool = False
+
+    model_config = {"extra": "forbid"}
+
+    @field_validator("name", "group", "url", mode="before")
+    @classmethod
+    def _blank_is_none(cls, value):
+        if isinstance(value, str):
+            value = " ".join(value.split())
+            return value or None
+        return value
+
+    @field_validator("url")
+    @classmethod
+    def _web_link(cls, value: str | None) -> str | None:
+        # Only web links: the page opens it in a new tab.
+        if value is not None and not value.lower().startswith(("http://", "https://")):
+            raise ValueError("the link must start with http:// or https://")
+        return value
 
 # The map's worker is an ES module and its fonts are protobuf; older Pythons know neither.
 mimetypes.add_type("text/javascript", ".mjs")
@@ -126,6 +208,58 @@ def create_web_app(config: Config, runner: RunnerClient | None, static_dir: Path
         total = ok + sum(b["down"] for b in buckets)
         return {"service": service_id, "hours": hours, "bucket_s": bucket, "buckets": buckets,
                 "uptime": round(ok / total * 100, 3) if total else None}
+
+    @app.put("/api/services/{service_id}/override")
+    async def place_service(service_id: str, body: Placement) -> dict:
+        ledger()
+        if service_id not in monitor.service_ids():
+            raise HTTPException(404, "No such service.")
+        monitor.set_override(service_id, name=body.name, group=body.group, url=body.url, hidden=body.hidden)
+        return {"ok": True}
+
+    @app.delete("/api/services/{service_id}/override")
+    async def reset_service(service_id: str) -> dict:
+        ledger()
+        monitor.clear_override(service_id)
+        return {"ok": True}
+
+    @app.get("/api/settings/services")
+    async def settings_services() -> dict:
+        ledger()
+        groups = monitor.groups()
+        # Config groups with no service in them yet are still offered as places to move to.
+        groups += [g for g in config.ordered_groups if g not in groups]
+        return {"services": monitor.settings_services(), "groups": groups,
+                "default_group": config.discovery.group if config.discovery else None}
+
+    @app.post("/api/settings/services")
+    async def bulk_services(body: Bulk) -> dict:
+        ledger()
+        known = monitor.service_ids()
+        unknown = [i for i in body.ids if i not in known]
+        if unknown:
+            raise HTTPException(404, f"No such service: {unknown[0]}.")
+        changes = body.changes.model_dump(exclude_unset=True) if body.changes else {}
+        for service_id in dict.fromkeys(body.ids):
+            if body.reset:
+                monitor.clear_override(service_id)
+            elif changes:
+                monitor.update_override(service_id, changes)
+        return {"ok": True, "count": len(set(body.ids))}
+
+    @app.put("/api/settings/groups")
+    async def group_order(body: GroupOrder) -> dict:
+        ledger()
+        monitor.set_group_order(body.order)
+        return {"ok": True, "groups": monitor.groups()}
+
+    @app.post("/api/settings/groups/rename")
+    async def group_rename(body: GroupRename) -> dict:
+        ledger()
+        moved = monitor.rename_group(body.old, body.new)
+        if not moved:
+            raise HTTPException(404, "No service is in that group.")
+        return {"ok": True, "moved": moved, "groups": monitor.groups()}
 
     @app.get("/api/recap")
     async def recap(days: int = 7) -> dict:

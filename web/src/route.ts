@@ -4,7 +4,9 @@ import { useCallback, useEffect, useState } from 'react'
 // same deck with the same details open: #/deck or #/deck/kind/id.
 
 export const DECKS = ['bridge', 'engineering', 'holonet', 'archives', 'armory'] as const
-export type Deck = (typeof DECKS)[number]
+// Settings is a page of its own, reached from the header rather than the tabs.
+export const PAGES = [...DECKS, 'settings'] as const
+export type Deck = (typeof PAGES)[number]
 
 export const DECK_INFO: Record<Deck, { name: string; plain: string; key: string }> = {
   bridge: { name: 'Bridge', plain: 'Overview', key: '1' },
@@ -12,6 +14,7 @@ export const DECK_INFO: Record<Deck, { name: string; plain: string; key: string 
   holonet: { name: 'Holonet', plain: 'Media', key: '3' },
   archives: { name: 'Archives', plain: 'Backups', key: '4' },
   armory: { name: 'Armory', plain: 'Controls', key: '5' },
+  settings: { name: 'Settings', plain: 'Configuration', key: ',' },
 }
 
 export interface DrawerRef {
@@ -26,7 +29,7 @@ export interface Route {
 
 export function parseHash(hash: string): Route {
   const [deckPart, kind, ...rest] = hash.replace(/^#\/?/, '').split('/')
-  const deck = (DECKS as readonly string[]).includes(deckPart) ? (deckPart as Deck) : 'bridge'
+  const deck = (PAGES as readonly string[]).includes(deckPart) ? (deckPart as Deck) : 'bridge'
   let drawer: DrawerRef | null = null
   if (kind) {
     try {

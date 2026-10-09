@@ -129,3 +129,84 @@ def test_a_service_gone_before_it_was_seen_matches_its_folder_by_name():
     # A stopped (exited) container is still listed, so the service shows down, not removed.
     exited = {"safe-firefox": container("safe-firefox", "firefox", state="exited")}
     assert plan([firefox], exited, [], {}, SETTINGS).configured == [(firefox, "active")]
+
+
+def test_services_can_be_renamed_regrouped_and_hidden_from_the_page(tmp_path):
+    from fastapi.testclient import TestClient
+
+    from executor.store import Store
+    from executor.web import create_web_app
+
+    config = Config.model_validate({
+        "security": {"allowed_clients": ["10.8.0.0/24"], "allowed_hosts": ["10.8.0.10"]},
+        "groups": ["Apps"], "machines": [],
+        "services": [{"id": "web", "name": "Web", "group": "Apps"}, {"id": "db", "name": "DB", "group": "Apps"}],
+    })
+    store = Store(tmp_path / "x.db")
+    app = create_web_app(config, runner=None, static_dir=None, start_monitor=False, store=store)
+    c = TestClient(app, base_url="http://10.8.0.10:1977", client=("10.8.0.2", 5000))
+    write = {"X-Executor": "1", "Content-Type": "application/json"}
+    # Writes need the guard's header, like every change.
+    assert c.put("/api/services/web/override", json={"group": "Tools"}).status_code == 403
+    assert c.put("/api/services/web/override", json={"name": " Web  app ", "group": "Tools"}, headers=write).json() == {"ok": True}
+    assert c.put("/api/services/web/override", json={"url": "javascript:alert(1)"}, headers=write).status_code == 422
+    assert c.put("/api/services/web/override", json={"command": "rm"}, headers=write).status_code == 422
+    assert c.put("/api/services/nope/override", json={}, headers=write).status_code == 404
+    c.put("/api/services/db/override", json={"hidden": True}, headers=write)
+    snap = c.get("/api/status").json()
+    web = next(s for s in snap["services"] if s["id"] == "web")
+    assert web["name"] == "Web app" and web["group"] == "Tools" and web["edited"] is True
+    assert web["defaults"] == {"name": "Web", "group": "Apps", "url": None}
+    assert snap["groups"] == ["Tools"]  # Apps now holds only a hidden service
+    assert [h["id"] for h in snap["hidden"]] == ["db"] and all(s["id"] != "db" for s in snap["services"])
+    # Survives a restart, and resets cleanly.
+    again = TestClient(create_web_app(config, runner=None, static_dir=None, start_monitor=False, store=store),
+                       base_url="http://10.8.0.10:1977", client=("10.8.0.2", 5000))
+    assert next(s for s in again.get("/api/status").json()["services"] if s["id"] == "web")["group"] == "Tools"
+    assert again.delete("/api/services/web/override", headers=write).json() == {"ok": True}
+    web = next(s for s in again.get("/api/status").json()["services"] if s["id"] == "web")
+    assert web["group"] == "Apps" and web["edited"] is False
+    titles = [e["title"] for e in store.events(10)]
+    assert "Web back to its default placement" in titles and "DB hidden from the page" in titles
+
+
+def test_settings_bulk_moves_orders_and_renames_groups(tmp_path):
+    from fastapi.testclient import TestClient
+
+    from executor.store import Store
+    from executor.web import create_web_app
+
+    config = Config.model_validate({
+        "security": {"allowed_clients": ["10.8.0.0/24"], "allowed_hosts": ["10.8.0.10"]},
+        "groups": ["Media", "Tools"], "machines": [],
+        "services": [{"id": "a", "name": "A", "group": "Media"}, {"id": "b", "name": "B", "group": "Media",
+                                                                   "url": "http://b.example"},
+                     {"id": "c", "name": "C", "group": "Tools"}],
+    })
+    store = Store(tmp_path / "x.db")
+    c = TestClient(create_web_app(config, runner=None, static_dir=None, start_monitor=False, store=store),
+                   base_url="http://10.8.0.10:1977", client=("10.8.0.2", 5000))
+    write = {"X-Executor": "1", "Content-Type": "application/json"}
+    # Rename one, then move both Media services: the rename survives the move.
+    c.put("/api/services/b/override", json={"name": "Bee"}, headers=write)
+    assert c.post("/api/settings/services", json={"ids": ["a", "b"], "changes": {"group": "Watch"}},
+                  headers=write).json()["count"] == 2
+    rows = {r["id"]: r for r in c.get("/api/settings/services").json()["services"]}
+    assert rows["b"]["name"] == "Bee" and rows["b"]["group"] == "Watch" and rows["b"]["url"] == "http://b.example"
+    assert rows["a"]["override"] == {"name": None, "group": "Watch", "url": None}
+    # Hide one in bulk; the settings list still has it.
+    c.post("/api/settings/services", json={"ids": ["c"], "changes": {"hidden": True}}, headers=write)
+    body = c.get("/api/settings/services").json()
+    assert {r["id"]: r["hidden"] for r in body["services"]} == {"a": False, "b": False, "c": True}
+    assert body["groups"] == ["Watch", "Media", "Tools"]  # empty config groups stay offered
+    # Order and rename groups.
+    c.post("/api/settings/services", json={"ids": ["c"], "changes": {"hidden": False}}, headers=write)
+    assert c.put("/api/settings/groups", json={"order": ["Tools", "Watch"]}, headers=write).json()["groups"] == ["Tools", "Watch"]
+    assert c.post("/api/settings/groups/rename", json={"old": "Watch", "new": " Media "}, headers=write).json()["moved"] == 2
+    assert c.get("/api/status").json()["groups"] == ["Tools", "Media"]
+    assert c.post("/api/settings/groups/rename", json={"old": "Nope", "new": "X"}, headers=write).status_code == 404
+    # Reset in bulk brings back the config's placement, and unknown ids are refused.
+    c.post("/api/settings/services", json={"ids": ["a", "b"], "reset": True}, headers=write)
+    rows = {r["id"]: r for r in c.get("/api/settings/services").json()["services"]}
+    assert rows["b"]["name"] == "B" and rows["b"]["override"] is None
+    assert c.post("/api/settings/services", json={"ids": ["zzz"], "reset": True}, headers=write).status_code == 404

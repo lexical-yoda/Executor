@@ -12,6 +12,8 @@
 - Plays: what was played, by whom and for how long, from Jellyfin's activity
   log, for the weekly recap.
 - Daily: per-day counters (bytes downloaded).
+- Overrides: a service's name, group, link or visibility as set from the
+  page, which win over config.yaml and compose labels.
 """
 
 from __future__ import annotations
@@ -96,6 +98,14 @@ CREATE TABLE IF NOT EXISTS items (
     kind TEXT,
     year INTEGER,
     runtime_s INTEGER
+);
+CREATE TABLE IF NOT EXISTS overrides (
+    service TEXT PRIMARY KEY,
+    name TEXT,
+    grp TEXT,
+    url TEXT,
+    hidden INTEGER NOT NULL DEFAULT 0,
+    updated REAL NOT NULL
 );
 CREATE TABLE IF NOT EXISTS daily (
     day TEXT NOT NULL,
@@ -434,6 +444,24 @@ class Store:
                            "episode": episode, "kind": kind, "device": device, "started": started,
                            "seconds": max(0, min(seconds, MAX_PLAY)), "city": city, "country_code": code})
         return result
+
+    # --- service overrides ---------------------------------------------------
+    def overrides(self) -> dict[str, dict]:
+        rows = self._db.execute("SELECT service, name, grp, url, hidden FROM overrides").fetchall()
+        return {r[0]: {"name": r[1], "group": r[2], "url": r[3], "hidden": bool(r[4])} for r in rows}
+
+    def set_override(self, service: str, *, name: str | None, group: str | None, url: str | None,
+                     hidden: bool) -> None:
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO overrides (service, name, grp, url, hidden, updated) VALUES (?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT (service) DO UPDATE SET name = excluded.name, grp = excluded.grp, url = excluded.url, "
+                "hidden = excluded.hidden, updated = excluded.updated",
+                (service, name, group, url, int(hidden), time.time()))
+
+    def clear_override(self, service: str) -> bool:
+        with self._lock:
+            return self._db.execute("DELETE FROM overrides WHERE service = ?", (service,)).rowcount > 0
 
     # --- daily counters ------------------------------------------------------
     def add_daily(self, day: str, key: str, value: float) -> None:

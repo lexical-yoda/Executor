@@ -34,6 +34,9 @@ read the git-ignored `PLAN.local.md` (plan, decisions, state and history) and
   folders (`files:`) and the stacks folder (`stacks_dir:`) are fixed in
   `actions.yaml`; it reports file names, sizes, times, configured log tails and
   stack folder names only.
+- **The settings page changes presentation only** (service names, groups,
+  links, visibility, group order), stored in the web data folder. Never let it
+  edit actions, checks that run commands, or anything the runner reads.
 - **Frontend layout:** decks in `web/src/decks/`, one drawer for every detail
   (`components/Drawer.tsx`, routed through the URL hash in `route.ts`), the
   map in `web/src/map/`. New clickable things open a drawer kind rather than a
