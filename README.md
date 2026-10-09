@@ -78,9 +78,10 @@ actually runs instead of only what is listed:
 - With `stacks_dir` in `actions.yaml` (a folder of one subfolder per stack,
   such as a stack manager's), the runner also reports the subfolder names.
   A stack with a folder but no containers shows as stopped (grey, no alert).
-  A configured service whose containers are gone shows as stopped while its
-  stack folder exists and disappears once the folder is deleted, so deleting
-  a stack removes its tile. The stack each container belonged to is remembered
+  A configured service whose containers are gone (removed, not just stopped:
+  Docker still lists stopped containers, which show as down) shows as stopped
+  while its stack folder exists and disappears once the folder is deleted, so
+  deleting a stack removes its tile. The stack each container belonged to is remembered
   in the data folder, because a removed container no longer says; a service
   never seen running is matched to a folder named like it or its container
   (compared without case, spaces or dashes).

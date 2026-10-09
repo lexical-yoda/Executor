@@ -124,5 +124,8 @@ def test_a_service_gone_before_it_was_seen_matches_its_folder_by_name():
     assert result.learned and memory["safe-firefox"] == ["firefox"]
     # The folder is deleted later: the service goes with it.
     assert plan([firefox], {}, [], memory, SETTINGS).removed == ["firefox"]
-    # Never linked to any folder: kept (shown down), since Executor cannot tell.
-    assert plan([firefox], {}, [], {}, SETTINGS).configured == [(firefox, "active")]
+    # Never linked to any folder and no folder by its names: removed as well.
+    assert plan([firefox], {}, [], {}, SETTINGS).removed == ["firefox"]
+    # A stopped (exited) container is still listed, so the service shows down, not removed.
+    exited = {"safe-firefox": container("safe-firefox", "firefox", state="exited")}
+    assert plan([firefox], exited, [], {}, SETTINGS).configured == [(firefox, "active")]

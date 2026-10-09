@@ -7,11 +7,12 @@ names, groups, links and checks. Around them:
   lists appears on its own, named after the stack, with a link and a TCP
   check on its first published port when the settings allow.
 - A stack folder with no containers at all appears as a stopped stack.
-- A configured service whose containers are all gone is "stopped" while its
-  stack folder still exists, and dropped once the folder is gone too, so
-  removing a stack removes its tile. The stack a container belonged to is
-  remembered from its compose labels, because a removed container no longer
-  says.
+- A configured service whose containers are all gone (removed, not just
+  stopped: Docker still lists stopped ones) is "stopped" while its stack
+  folder still exists, and dropped once no folder is left under any of its
+  names, so deleting a stack removes its tile. The stack a container belonged
+  to is remembered from its compose labels, because a removed container no
+  longer says.
 """
 
 from __future__ import annotations
@@ -103,7 +104,9 @@ def plan(services: list[Service], containers: dict[str, dict] | None, stack_dirs
         covered_stacks |= stacks
         state = "active"
         gone = containers is not None and service.containers and not any(c in containers for c in service.containers)
-        if gone and stacks and folders is not None:
+        if gone and folders is not None:
+            # Removed containers (not stopped ones, which Docker still lists) and no
+            # stack folder under any of its names: the stack was deleted.
             state = "stopped" if stacks & folders else "removed"
         if state == "removed":
             result.removed.append(service.id)
