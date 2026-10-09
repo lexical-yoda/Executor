@@ -118,6 +118,28 @@ class MapPoint(BaseModel):
     lon: float = Field(ge=-180, le=180)
 
 
+class LocationCorrection(BaseModel):
+    # A known place that beats the geolocation databases. Matches, most
+    # specific first: a Jellyfin device name, an address in one of the
+    # networks, or a Jellyfin user who is always in this place.
+    city: str
+    region: str | None = None
+    country: str | None = None
+    country_code: str | None = None
+    lat: float = Field(ge=-90, le=90)
+    lon: float = Field(ge=-180, le=180)
+    networks: list[str] = []
+    devices: list[str] = []
+    users: list[str] = []
+
+    @field_validator("networks")
+    @classmethod
+    def _networks(cls, value: list[str]) -> list[str]:
+        for item in value:
+            ipaddress.ip_network(item, strict=False)
+        return value
+
+
 class JellyfinIntegration(BaseModel):
     # Server URL as seen from the web container. The API key comes from the
     # environment (JELLYFIN_API_KEY), never from this file.
@@ -130,6 +152,12 @@ class JellyfinIntegration(BaseModel):
     # `hub` (the public relay or reverse proxy, if any) and out to viewers.
     origin: MapPoint | None = None
     hub: MapPoint | None = None
+    corrections: list[LocationCorrection] = []
+    # A URL that answers with this server's public address as plain text (for
+    # example https://api.ipify.org). Sessions from that address come from
+    # the same home as the server, so they are placed at `origin`. Checked
+    # hourly; off when unset.
+    home_ip_url: str | None = None
 
 
 class DuplicatiIntegration(BaseModel):

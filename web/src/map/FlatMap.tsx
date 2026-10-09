@@ -171,6 +171,8 @@ export default function FlatMap({ mode, places, live, origin, hub, trail, now, s
   const grid = useMemo(() => path(geoGraticule10()) ?? '', [path])
   const at = (p: Pt): XY => (projection([p.lon, p.lat]) as XY | null) ?? [-999, -999]
 
+  // On-screen size of a distance around a point, measured north-south.
+  const kmToPixels = (p: Pt, km: number) => Math.abs(at(p)[1] - at({ lat: p.lat + km / 111, lon: p.lon })[1])
   const o = origin ? at(origin) : null
   const h = hub ? at(hub) : null
   const streaming = watching.length > 0
@@ -317,6 +319,14 @@ export default function FlatMap({ mode, places, live, origin, hub, trail, now, s
               />
             )}
             {d && !reduced && <Flow d={d} count={3} seconds={1.8} r={2.8 * k} className="flow-dot flow-dot-out" />}
+            {s.location.radius_km && s.location.source !== 'correction' && s.location.source !== 'home' && (
+              <circle
+                cx={end[0]}
+                cy={end[1]}
+                r={kmToPixels(s.location, s.location.radius_km)}
+                className="map-accuracy"
+              />
+            )}
             <circle cx={end[0]} cy={end[1]} r={7 * k} className="map-live-pulse" strokeWidth={2 * k} />
             <circle cx={end[0]} cy={end[1]} r={(chosen ? 5.5 : 4) * k} fill={LIVE} />
             {labels && (

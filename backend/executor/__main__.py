@@ -94,7 +94,7 @@ def main() -> None:
         history = None
         if jellyfin and config.integrations.jellyfin:
             from .history import MediaHistory
-            from .sources.geo import GeoIP
+            from .sources.geo import Corrections, DbIpLite, GeoLite2, Locator, MmdbSource
             from .store import Store
 
             settings = config.integrations.jellyfin
@@ -102,11 +102,25 @@ def main() -> None:
             store = geo = None
             if settings.history_days and data.is_dir() and os.access(data, os.W_OK):
                 store = Store(data / "executor.db")
-                geo = GeoIP(data / "geo")
+                folder = data / "geo"
+                # Earlier versions kept DB-IP's month in a file called "month".
+                if (folder / "month").exists() and not (folder / f"{DbIpLite.file}.version").exists():
+                    (folder / "month").rename(folder / f"{DbIpLite.file}.version")
+                sources: list[MmdbSource] = []
+                if os.environ.get("MAXMIND_ACCOUNT_ID") and os.environ.get("MAXMIND_LICENSE_KEY"):
+                    sources.append(GeoLite2(folder, os.environ["MAXMIND_ACCOUNT_ID"],
+                                            os.environ["MAXMIND_LICENSE_KEY"]))
+                sources.append(DbIpLite(folder))
+                home = None
+                if settings.origin:
+                    home = {"city": settings.origin.label, "region": None, "country": None, "country_code": None,
+                            "lat": settings.origin.lat, "lon": settings.origin.lon, "radius_km": None,
+                            "source": "home"}
+                geo = Locator(sources, Corrections(settings.corrections), home)
             elif settings.history_days:
                 logging.getLogger("executor").warning(
                     "location history off: %s is missing or not writable", data)
-            history = MediaHistory(jellyfin, store, geo, settings.history_days)
+            history = MediaHistory(jellyfin, store, geo, settings.history_days, settings.home_ip_url)
         app = create_web_app(config, runner, static, beszel=beszel, jellyfin=jellyfin, duplicati=duplicati,
                              media=media, cloudwatch=cloudwatch, history=history)
         uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "1977")), **common)

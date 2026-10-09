@@ -1,6 +1,14 @@
 import { ChevronDown, Map as MapIcon, MapPin, Search, X } from 'lucide-react'
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
-import { api, type JellyfinStatus, type MediaUser, type PlaceGroup, type Sighting, type Watching } from '../api'
+import {
+  api,
+  type JellyfinStatus,
+  type MediaUser,
+  type Place,
+  type PlaceGroup,
+  type Sighting,
+  type Watching,
+} from '../api'
 import { ago, duration } from '../format'
 import { type MapMode, type MapSelection, streamKey } from '../map/types'
 import { placeName } from './NowPlaying'
@@ -177,6 +185,11 @@ function PlaceDetails({ place, now, onUser }: { place: PlaceGroup; now: number; 
       </h4>
       <p className="small muted">
         {place.count} sessions · first {ago(place.first_seen * 1000, now)} · last {ago(place.last_seen * 1000, now)}
+        {place.corrected
+          ? ' · includes your corrections'
+          : place.radius_km
+            ? ` · within about ${place.radius_km} km`
+            : ''}
       </p>
       <ul className="place-users">
         {place.users.map((u) => (
@@ -192,6 +205,13 @@ function PlaceDetails({ place, now, onUser }: { place: PlaceGroup; now: number; 
       </ul>
     </div>
   )
+}
+
+function sourceNote(place: Partial<Place>): string {
+  if (place.source === 'home') return 'same address as the server'
+  if (place.source === 'correction') return 'your correction'
+  const name = place.source === 'geolite2' ? 'GeoLite2' : place.source === 'dbip' ? 'DB-IP' : 'database'
+  return place.radius_km ? `${name}, within about ${place.radius_km} km` : name
 }
 
 function StreamDetails({ stream, jellyfin }: { stream: Watching; jellyfin: JellyfinStatus }) {
@@ -218,7 +238,11 @@ function StreamDetails({ stream, jellyfin }: { stream: Watching; jellyfin: Jelly
         <dt>Route</dt>
         <dd>{route.join(' → ')}</dd>
         <dt>Where</dt>
-        <dd>{place ? [place.city, place.region, place.country].filter(Boolean).join(', ') : 'Unknown'}</dd>
+        <dd>
+          {place ? [place.city, place.region, place.country].filter(Boolean).join(', ') : 'Unknown'}
+          {place && <span className="small muted"> · {sourceNote(place)}</span>}
+          {stream.location_alt && <span className="small muted"> (DB-IP says {placeName(stream.location_alt)})</span>}
+        </dd>
         <dt>Address</dt>
         <dd className="mono">{stream.ip ?? '—'}</dd>
         <dt>App</dt>
@@ -234,7 +258,12 @@ function StreamDetails({ stream, jellyfin }: { stream: Watching; jellyfin: Jelly
         <dt>Playback</dt>
         <dd>{stream.transcoding ? 'Transcoding on the server' : 'Direct play'}</dd>
       </dl>
-      <p className="small muted">The place comes from the viewer's address and is city level at best.</p>
+      {place?.source !== 'correction' && place?.source !== 'home' && (
+        <p className="small muted">
+          The place is looked up from the viewer's address and is city level at best. Add a correction in the config for
+          people and devices you know.
+        </p>
+      )}
     </div>
   )
 }
@@ -441,7 +470,16 @@ export function Audience({ jellyfin, now }: { jellyfin: JellyfinStatus; now: num
         </article>
       </div>
       <p className="attribution small muted">
-        Locations are approximate (city level).{' '}
+        Locations are approximate (city level) unless corrected.{' '}
+        {jellyfin.history.geo_sources.some((g) => g.name === 'geolite2' && g.ready) && (
+          <>
+            This product includes GeoLite2 data created by MaxMind, available from{' '}
+            <a href="https://www.maxmind.com" target="_blank" rel="noreferrer noopener">
+              maxmind.com
+            </a>
+            .{' '}
+          </>
+        )}
         <a href="https://db-ip.com" target="_blank" rel="noreferrer noopener">
           IP geolocation by DB-IP
         </a>{' '}

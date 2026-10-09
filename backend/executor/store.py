@@ -32,7 +32,9 @@ CREATE TABLE IF NOT EXISTS sightings (
     country TEXT,
     country_code TEXT,
     lat REAL,
-    lon REAL
+    lon REAL,
+    radius_km REAL,
+    geo_source TEXT
 );
 CREATE INDEX IF NOT EXISTS sightings_user ON sightings (user_id, last_seen);
 CREATE INDEX IF NOT EXISTS sightings_time ON sightings (last_seen);
@@ -40,7 +42,8 @@ CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
 
 COLUMNS = ("id", "user_id", "user_name", "ip", "device", "client", "item", "source", "first_seen",
-           "last_seen", "city", "region", "country", "country_code", "lat", "lon")
+           "last_seen", "city", "region", "country", "country_code", "lat", "lon", "radius_km", "geo_source")
+GEO = ("city", "region", "country", "country_code", "lat", "lon", "radius_km", "geo_source")
 
 
 class Store:
@@ -50,6 +53,10 @@ class Store:
         self._db.execute("PRAGMA journal_mode=WAL")
         self._db.execute("PRAGMA busy_timeout=5000")
         self._db.executescript(SCHEMA)
+        existing = {row[1] for row in self._db.execute("PRAGMA table_info(sightings)")}
+        for column, kind in (("radius_km", "REAL"), ("geo_source", "TEXT")):
+            if column not in existing:
+                self._db.execute(f"ALTER TABLE sightings ADD COLUMN {column} {kind}")
         # Early rows kept form-encoded device names ("Sam's+phone").
         self._db.execute("UPDATE sightings SET device = REPLACE(device, '+', ' ') "
                          "WHERE device LIKE '%+%' AND device NOT LIKE '% %'")
@@ -88,10 +95,11 @@ class Store:
             geo = geo or {}
             self._db.execute(
                 "INSERT INTO sightings (user_id, user_name, ip, device, client, item, source, first_seen, "
-                "last_seen, city, region, country, country_code, lat, lon) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "last_seen, city, region, country, country_code, lat, lon, radius_km, geo_source) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (user_id, user_name, ip, device, client, item, source, when, when, geo.get("city"),
-                 geo.get("region"), geo.get("country"), geo.get("country_code"), geo.get("lat"), geo.get("lon")))
+                 geo.get("region"), geo.get("country"), geo.get("country_code"), geo.get("lat"), geo.get("lon"),
+                 geo.get("radius_km"), geo.get("source")))
 
     def purge(self, keep_days: float, now: float | None = None) -> int:
         cutoff = (now or time.time()) - keep_days * 86400
@@ -105,16 +113,29 @@ class Store:
         return self._rows(f"SELECT {', '.join(COLUMNS)} FROM sightings WHERE user_id = ? AND last_seen >= ? "
                           "ORDER BY first_seen", (user_id, since))
 
-    def unlocated_ips(self) -> list[str]:
-        return [r[0] for r in self._db.execute("SELECT DISTINCT ip FROM sightings WHERE lat IS NULL").fetchall()]
+    def targets(self) -> list[tuple[str, str, str | None]]:
+        """Every distinct (address, user name, device) seen, for relocating history."""
+        return [tuple(r) for r in self._db.execute(
+            "SELECT DISTINCT ip, user_name, device FROM sightings").fetchall()]
 
-    def set_location(self, ip: str, geo: dict) -> None:
+    def relocate(self, ip: str, user_name: str, device: str | None, geo: dict | None) -> None:
+        geo = geo or {}
+        values = [geo.get(k if k != "geo_source" else "source") for k in GEO]
         with self._lock:
             self._db.execute(
-                "UPDATE sightings SET city = ?, region = ?, country = ?, country_code = ?, lat = ?, lon = ? "
-                "WHERE ip = ? AND lat IS NULL",
-                (geo.get("city"), geo.get("region"), geo.get("country"), geo.get("country_code"),
-                 geo.get("lat"), geo.get("lon"), ip))
+                f"UPDATE sightings SET {', '.join(f'{k} = ?' for k in GEO)} "
+                "WHERE ip = ? AND user_name = ? AND IFNULL(device, '') = IFNULL(?, '') "
+                # Sessions placed at home stay there: the address may belong to someone else later.
+                "AND IFNULL(geo_source, '') != 'home'",
+                (*values, ip, user_name, device))
+
+    def mark_home(self, ip: str, since: float, geo: dict) -> int:
+        """Place recent sessions from the server's own address at home."""
+        values = [geo.get(k if k != "geo_source" else "source") for k in GEO]
+        with self._lock:
+            return self._db.execute(
+                f"UPDATE sightings SET {', '.join(f'{k} = ?' for k in GEO)} WHERE ip = ? AND last_seen >= ?",
+                (*values, ip, since)).rowcount
 
     def count(self) -> int:
         return self._db.execute("SELECT COUNT(*) FROM sightings").fetchone()[0]
@@ -134,16 +155,20 @@ class Store:
             args.append(user_id)
         rows = self._db.execute(
             f"SELECT lat, lon, city, region, country, country_code, user_id, MAX(user_name), COUNT(*), "
-            f"MIN(first_seen), MAX(last_seen) FROM sightings WHERE {where} AND lat IS NOT NULL "
-            f"GROUP BY lat, lon, user_id", tuple(args)).fetchall()
+            f"MIN(first_seen), MAX(last_seen), MAX(radius_km), MAX(geo_source = 'correction') "
+            f"FROM sightings WHERE {where} AND lat IS NOT NULL GROUP BY lat, lon, user_id", tuple(args)).fetchall()
         unlocated = self._db.execute(f"SELECT COUNT(*) FROM sightings WHERE {where} AND lat IS NULL",
                                      tuple(args)).fetchone()[0]
         places: dict[tuple, dict] = {}
-        for lat, lon, city, region, country, code, uid, name, count, first, last in rows:
+        for lat, lon, city, region, country, code, uid, name, count, first, last, radius, fixed in rows:
             place = places.setdefault((lat, lon), {
                 "lat": lat, "lon": lon, "city": city, "region": region, "country": country,
-                "country_code": code, "count": 0, "first_seen": first, "last_seen": last, "users": []})
+                "country_code": code, "count": 0, "first_seen": first, "last_seen": last, "users": [],
+                "radius_km": radius, "corrected": bool(fixed)})
             place["count"] += count
+            place["corrected"] = place["corrected"] or bool(fixed)
+            if radius is not None:
+                place["radius_km"] = max(place["radius_km"] or 0, radius)
             place["first_seen"] = min(place["first_seen"], first)
             place["last_seen"] = max(place["last_seen"], last)
             place["users"].append({"id": uid, "name": name, "count": count, "last_seen": last})

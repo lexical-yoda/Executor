@@ -103,6 +103,17 @@ folder, Executor also keeps a location history:
   to any other service. Accuracy is city level at best: mobile carriers often
   place users in a hub city, and VPN users appear at the VPN's exit. The page
   credits DB-IP as its CC BY 4.0 licence requires.
+- Two free databases, both downloaded and used locally: MaxMind GeoLite2
+  City first, when `MAXMIND_ACCOUNT_ID` and `MAXMIND_LICENSE_KEY` are set (a
+  free account; refreshed weekly; it also estimates its own error, drawn as a
+  faint circle), then DB-IP Lite. When they name different cities, the
+  stream's details show the second opinion.
+- Places you know beat any database: `corrections` in `config.yaml` match a
+  Jellyfin device name, a network, or a user who is always in one place, and
+  with `home_ip_url` the server learns its own public address hourly and
+  places sessions from it at `origin`. When a database update or a changed
+  correction could move places, the whole history is located again (sessions
+  placed at home stay there).
 - History older than `history_days` is deleted daily.
 - `GET /api/media/users`, `/api/media/places` and `/api/media/trail` serve
   the history to the page.

@@ -1954,6 +1954,13 @@ a.tile:hover .tile-link {
   fill: rgba(245, 165, 36, 0.6);
 }
 
+.map-accuracy {
+  fill: rgba(52, 211, 153, 0.07);
+  stroke: rgba(52, 211, 153, 0.35);
+  stroke-dasharray: 4 4;
+  pointer-events: none;
+}
+
 .map-live-pulse {
   fill: none;
   stroke: #34d399;

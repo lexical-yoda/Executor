@@ -298,6 +298,10 @@ export interface Place {
   country_code: string | null
   lat: number
   lon: number
+  /** How far off the database says it may be, in km (GeoLite2 only). */
+  radius_km?: number | null
+  /** geolite2, dbip, or correction (a known place from the config). */
+  source?: string | null
 }
 
 export interface Watching {
@@ -314,6 +318,8 @@ export interface Watching {
   runtime_s: number | null
   last_activity: string | null
   location: Place | null
+  /** The other database's answer, when it names a different city. */
+  location_alt: Place | null
 }
 
 export interface JellyfinStatus {
@@ -325,8 +331,8 @@ export interface JellyfinStatus {
     enabled: boolean
     keep_days: number
     geo_ready: boolean
-    geo_month: string | null
-    geo_error: string | null
+    geo_sources: { name: string; ready: boolean; version: string | null; error: string | null }[]
+    corrections: number
     sightings: number
     error: string | null
   }
@@ -343,6 +349,7 @@ export interface MediaUser {
 }
 
 export interface PlaceGroup extends Place {
+  corrected: boolean
   count: number
   first_seen: number
   last_seen: number
