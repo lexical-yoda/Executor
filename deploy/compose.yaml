@@ -71,5 +71,12 @@ services:
     restart: unless-stopped
 
 networks:
+  # IPv4 only. On a Docker daemon with IPv6 enabled, host.docker.internal also
+  # resolves to the host's IPv6 address, and Docker accepts IPv6 connections to
+  # published ports even when the target container listens only on IPv4, then
+  # drops them. Probes would fail with "Server disconnected".
+  default:
+    enable_ipv6: false
   internal:
     internal: true
+    enable_ipv6: false
