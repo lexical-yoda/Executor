@@ -29,6 +29,12 @@ services:
       JELLYFIN_API_KEY: ${JELLYFIN_API_KEY:-}
       # Optional Duplicati UI password, for the backups panel.
       DUPLICATI_PASSWORD: ${DUPLICATI_PASSWORD:-}
+      # Optional media panels.
+      JELLYSEERR_API_KEY: ${JELLYSEERR_API_KEY:-}
+      SONARR_API_KEY: ${SONARR_API_KEY:-}
+      RADARR_API_KEY: ${RADARR_API_KEY:-}
+      QBITTORRENT_USERNAME: ${QBITTORRENT_USERNAME:-}
+      QBITTORRENT_PASSWORD: ${QBITTORRENT_PASSWORD:-}
     volumes:
       - ${EXECUTOR_DIR:?set EXECUTOR_DIR in .env}/config/config.yaml:/config/config.yaml:ro
     extra_hosts:

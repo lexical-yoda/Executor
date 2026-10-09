@@ -15,6 +15,7 @@ from .sources.backups import evaluate_files
 from .sources.beszel import Beszel, summarize, to_series
 from .sources.duplicati import Duplicati
 from .sources.edge import check_certificate, fetch_bandwidth
+from .sources.media import MediaSources
 
 log = logging.getLogger("executor.monitor")
 
@@ -73,8 +74,18 @@ def service_status(service: Service, probe: Probe | None,
 
 class Monitor:
     def __init__(self, config: Config, runner: RunnerClient | None,
-                 beszel: Beszel | None = None, duplicati: Duplicati | None = None) -> None:
+                 beszel: Beszel | None = None, duplicati: Duplicati | None = None,
+                 media: MediaSources | None = None) -> None:
         self.config = config
+        self.media = media
+        self.media_settings = config.integrations.media
+        self.requests: dict | None = None
+        self.requests_error: str | None = None
+        self._requests_checked = 0.0
+        self.queue: list[dict] = []
+        self.queue_errors: dict[str, str] = {}
+        self.torrents: dict | None = None
+        self.torrents_error: str | None = None
         self.runner = runner
         self.beszel = beszel
         self.duplicati = duplicati
@@ -114,6 +125,8 @@ class Monitor:
             self._tasks.append(asyncio.create_task(self._loop(self.poll_edge, self.edge_settings.interval)))
         if self.backup_settings:
             self._tasks.append(asyncio.create_task(self._loop(self.poll_backups, self.backup_settings.interval)))
+        if self.media and self.media_settings:
+            self._tasks.append(asyncio.create_task(self._loop(self.poll_media, self.media_settings.interval)))
         if self.beszel:
             self._tasks += [
                 asyncio.create_task(self._loop(self.poll_beszel, settings.stats_interval)),
@@ -130,6 +143,8 @@ class Monitor:
             await self.beszel.close()
         if self.duplicati:
             await self.duplicati.close()
+        if self.media:
+            await self.media.close()
 
     @staticmethod
     async def _loop(func, interval: float) -> None:
@@ -211,6 +226,57 @@ class Monitor:
                     log.warning("runner folder report failed: %s", exc)
             self.backup_files = [evaluate_files(item, folders.get(item.folder)) for item in settings.files]
         self.backups_checked = time.time()
+
+    @staticmethod
+    def _reason(exc: Exception) -> str:
+        return (str(exc) if isinstance(exc, RuntimeError) else type(exc).__name__)[:160]
+
+    async def poll_media(self) -> None:
+        media, settings = self.media, self.media_settings
+        assert media is not None and settings is not None
+        if media.jellyseerr and time.monotonic() - self._requests_checked >= settings.requests_interval:
+            try:
+                self.requests = await media.jellyseerr.requests()
+                self.requests_error = None
+            except Exception as exc:  # noqa: BLE001
+                log.warning("jellyseerr failed: %s", exc)
+                self.requests_error = self._reason(exc)
+            self._requests_checked = time.monotonic()
+        queue: list[dict] = []
+        errors: dict[str, str] = {}
+        for arr in media.arrs:
+            try:
+                queue += await arr.queue()
+            except Exception as exc:  # noqa: BLE001
+                log.warning("%s queue failed: %s", arr.source, exc)
+                errors[arr.source] = self._reason(exc)
+        # Active downloads first, then by how far along they are.
+        queue.sort(key=lambda q: (q["status"] != "downloading", -(q["progress"] or 0)))
+        self.queue, self.queue_errors = queue, errors
+        if media.qbittorrent:
+            try:
+                self.torrents = await media.qbittorrent.status()
+                self.torrents_error = None
+            except Exception as exc:  # noqa: BLE001
+                log.warning("qbittorrent failed: %s", exc)
+                self.torrents_error = self._reason(exc)
+
+    def _media(self) -> dict | None:
+        if not (self.media and self.media_settings):
+            return None
+        media = self.media
+        return {
+            "requests": {"configured": media.jellyseerr is not None, "ok": self.requests_error is None,
+                         "error": self.requests_error, **(self.requests or {"counts": {}, "pending": [],
+                                                                            "processing": []})},
+            "downloads": {
+                "sources": [a.source for a in media.arrs],
+                "queue": self.queue,
+                "errors": self.queue_errors,
+                "torrents": {"configured": media.qbittorrent is not None, "ok": self.torrents_error is None,
+                             "error": self.torrents_error, **(self.torrents or {})},
+            },
+        }
 
     def _backups(self) -> dict | None:
         if not self.backup_settings:
@@ -333,4 +399,5 @@ class Monitor:
                        "error": self.beszel_error},
             "edge": self._edge(),
             "backups": self._backups(),
+            "media": self._media(),
         }

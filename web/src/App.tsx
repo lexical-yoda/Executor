@@ -5,6 +5,7 @@ import { Backups } from './components/Backups'
 import { Edge } from './components/Edge'
 import { Header } from './components/Header'
 import { Machines } from './components/Machines'
+import { Media } from './components/Media'
 import { Services } from './components/Services'
 import { useNow, usePoll } from './hooks'
 
@@ -26,6 +27,7 @@ export default function App() {
           <>
             <Machines machines={snapshot.machines} now={now} />
             {snapshot.edge && <Edge edge={snapshot.edge} now={now} />}
+            {snapshot.media && <Media media={snapshot.media} now={now} />}
             {snapshot.backups && <Backups backups={snapshot.backups} now={now} />}
             <Actions runnerOk={snapshot.runner.ok} now={now} />
             {!snapshot.runner.ok && (

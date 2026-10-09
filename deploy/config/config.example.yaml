@@ -49,6 +49,17 @@ integrations:
   # show_streams. The API key comes from JELLYFIN_API_KEY in .env.
   jellyfin:
     url: http://host.docker.internal:8096
+  # Optional. Media panels: Jellyseerr requests, Sonarr and Radarr queues, and
+  # qBittorrent speeds. Keys and the qBittorrent login come from .env.
+  media:
+    jellyseerr:
+      url: http://host.docker.internal:5055
+    sonarr:
+      url: http://host.docker.internal:8989
+    radarr:
+      url: http://host.docker.internal:7878
+    qbittorrent:
+      url: http://host.docker.internal:8080
   # Optional. Backups panel: Duplicati jobs (password from DUPLICATI_PASSWORD),
   # and backups judged by the files they leave in a folder the runner watches
   # (`files:` in actions.yaml). Use `expect` for a fixed set of files, or

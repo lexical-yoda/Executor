@@ -58,7 +58,32 @@ def main() -> None:
                                   timeout=backups.duplicati.timeout)
         elif backups and backups.duplicati:
             logging.getLogger("executor").warning("Duplicati configured but DUPLICATI_PASSWORD not set")
-        app = create_web_app(config, runner, static, beszel=beszel, jellyfin=jellyfin, duplicati=duplicati)
+        media = None
+        settings_media = config.integrations.media
+        if settings_media:
+            from .sources.media import Arr, Jellyseerr, MediaSources, QBittorrent
+
+            def missing(*names: str) -> bool:
+                absent = [n for n in names if not os.environ.get(n)]
+                if absent:
+                    logging.getLogger("executor").warning("media source skipped, %s not set", ", ".join(absent))
+                return bool(absent)
+
+            env = os.environ
+            m = settings_media
+            media = MediaSources(
+                jellyseerr=Jellyseerr(m.jellyseerr.url, env["JELLYSEERR_API_KEY"], m.jellyseerr.timeout)
+                if m.jellyseerr and not missing("JELLYSEERR_API_KEY") else None,
+                sonarr=Arr("sonarr", m.sonarr.url, env["SONARR_API_KEY"], m.sonarr.timeout)
+                if m.sonarr and not missing("SONARR_API_KEY") else None,
+                radarr=Arr("radarr", m.radarr.url, env["RADARR_API_KEY"], m.radarr.timeout)
+                if m.radarr and not missing("RADARR_API_KEY") else None,
+                qbittorrent=QBittorrent(m.qbittorrent.url, env["QBITTORRENT_USERNAME"],
+                                        env["QBITTORRENT_PASSWORD"], m.qbittorrent.timeout)
+                if m.qbittorrent and not missing("QBITTORRENT_USERNAME", "QBITTORRENT_PASSWORD") else None,
+            )
+        app = create_web_app(config, runner, static, beszel=beszel, jellyfin=jellyfin, duplicati=duplicati,
+                             media=media)
         uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "1977")), **common)
 
     elif role == "runner":

@@ -154,11 +154,30 @@ class BackupsIntegration(BaseModel):
     interval: float = 60
 
 
+class Upstream(BaseModel):
+    # URL as seen from the web container. Keys and passwords come from the
+    # environment, never from this file.
+    url: str
+    timeout: float = 8.0
+
+
+class MediaIntegration(BaseModel):
+    # Requests (JELLYSEERR_API_KEY), queues (SONARR_API_KEY, RADARR_API_KEY)
+    # and torrent client speeds (QBITTORRENT_USERNAME, QBITTORRENT_PASSWORD).
+    jellyseerr: Upstream | None = None
+    sonarr: Upstream | None = None
+    radarr: Upstream | None = None
+    qbittorrent: Upstream | None = None
+    interval: float = 15
+    requests_interval: float = 60
+
+
 class Integrations(BaseModel):
     beszel: BeszelIntegration | None = None
     edge: EdgeIntegration | None = None
     jellyfin: JellyfinIntegration | None = None
     backups: BackupsIntegration | None = None
+    media: MediaIntegration | None = None
 
 
 class Config(BaseModel):

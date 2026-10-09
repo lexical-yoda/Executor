@@ -73,6 +73,21 @@ the resulting file on a private interface to the Executor host only. Only
 outbound transfer is billed; the allowance shown is the account's pooled
 credits (instance credits accruing hourly plus the free monthly credits).
 
+### Media panels (optional)
+
+- **Requests** from Jellyseerr: counts, every request waiting for approval and
+  the newest approved ones, with poster, requester and age. Posters come
+  through the server (`/api/media/poster/...`), which serves only titles it
+  has already seen in its own request list and fetches them from Jellyseerr's
+  image proxy, so the page loads nothing from other origins.
+- **Downloads**: the Sonarr and Radarr queues (progress, time left, size,
+  import warnings) and qBittorrent's overall speeds and torrent counts.
+
+All read-only. Keys come from `JELLYSEERR_API_KEY`, `SONARR_API_KEY`,
+`RADARR_API_KEY`, `QBITTORRENT_USERNAME` and `QBITTORRENT_PASSWORD`; leave
+one out and that part is skipped. qBittorrent bans an address after repeated
+failed logins, so check its password before deploying.
+
 ### Backups panel (optional)
 
 One card per backup, with its state (OK, warnings, failed, overdue, running),
@@ -242,6 +257,6 @@ Tests: `cd backend && ../.venv/bin/python -m pytest -q`. Tests that check a real
 2. **Phase 2 (in progress):** machine stats and history from Beszel (done);
    bandwidth and certificate expiry (done); more actions, with ssh and http
    steps and an active-stream warning (done); backups panel (done); media
-   panels.
+   panels (done); Glacier storage size and growth.
 3. **Phase 3:** a media section: now playing, active users, a globe of login
    locations, and per-user location history.

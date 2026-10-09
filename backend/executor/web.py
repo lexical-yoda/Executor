@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .config import Config
@@ -17,14 +17,17 @@ from .security import Guard
 from .sources.beszel import RANGES, Beszel
 from .sources.duplicati import Duplicati
 from .sources.jellyfin import Jellyfin
+from .sources.media import MediaSources
 
 log = logging.getLogger("executor.web")
 
 
 def create_web_app(config: Config, runner: RunnerClient | None, static_dir: Path | None,
                    start_monitor: bool = True, beszel: Beszel | None = None,
-                   jellyfin: Jellyfin | None = None, duplicati: Duplicati | None = None) -> FastAPI:
-    monitor = Monitor(config, runner, beszel, duplicati)
+                   jellyfin: Jellyfin | None = None, duplicati: Duplicati | None = None,
+                   media: MediaSources | None = None) -> FastAPI:
+    monitor = Monitor(config, runner, beszel, duplicati, media)
+    posters: dict[tuple[str, int], tuple[bytes, str]] = {}
     history_cache: dict[tuple[str, str], tuple[float, dict]] = {}
     streams_cache: list = []  # [(monotonic time, body)]
 
@@ -100,6 +103,28 @@ def create_web_app(config: Config, runner: RunnerClient | None, static_dir: Path
             body = {"configured": True, "ok": False, "error": message, "streams": []}
         streams_cache[:] = [(now, body)]
         return body
+
+    @app.get("/api/media/poster/{kind}/{tmdb_id}")
+    async def poster(kind: str, tmdb_id: int) -> Response:
+        """Posters of requested titles, proxied because the page loads nothing
+        from other origins. Only titles the server has already seen in its own
+        request list are served, so the page cannot make it fetch anything else."""
+        if kind not in ("movie", "tv") or media is None or media.jellyseerr is None:
+            raise HTTPException(404)
+        key = (kind, tmdb_id)
+        if key not in posters:
+            try:
+                image = await media.jellyseerr.poster(kind, tmdb_id)
+            except Exception:  # noqa: BLE001
+                image = None
+            if image is None:
+                raise HTTPException(404)
+            if len(posters) >= 64:
+                posters.pop(next(iter(posters)))
+            posters[key] = image
+        content, content_type = posters[key]
+        return Response(content, media_type=content_type,
+                        headers={"Cache-Control": "private, max-age=86400"})
 
     @app.get("/api/actions")
     async def actions() -> JSONResponse:

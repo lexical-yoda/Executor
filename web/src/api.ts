@@ -106,6 +106,7 @@ export interface Snapshot {
   beszel: { configured: boolean; ok: boolean; error: string | null }
   edge: Edge | null
   backups: Backups | null
+  media: Media | null
 }
 
 export interface Bandwidth {
@@ -186,6 +187,64 @@ export interface Backups {
   checked_at: number | null
   duplicati: { configured: boolean; ok: boolean; error: string | null; jobs: DuplicatiJob[]; paused: boolean }
   files: FileBackupStatus[]
+}
+
+export interface MediaRequest {
+  id: number
+  kind: 'movie' | 'tv'
+  tmdb_id: number
+  title: string
+  year: number | null
+  has_poster: boolean
+  seasons: number[]
+  requested_by: string
+  requested_at: string | null
+  is_4k: boolean
+}
+
+export interface QueueItem {
+  id: string
+  source: 'sonarr' | 'radarr'
+  title: string
+  subtitle: string | null
+  size: number
+  progress: number | null
+  eta_s: number | null
+  status: string | null
+  state: string | null
+  health: string
+  message: string | null
+  client: string | null
+}
+
+export interface Media {
+  requests: {
+    configured: boolean
+    ok: boolean
+    error: string | null
+    counts: Partial<Record<'total' | 'pending' | 'processing' | 'available' | 'declined', number>>
+    pending: MediaRequest[]
+    processing: MediaRequest[]
+  }
+  downloads: {
+    sources: string[]
+    queue: QueueItem[]
+    errors: Record<string, string>
+    torrents: {
+      configured: boolean
+      ok: boolean
+      error: string | null
+      down_bps?: number
+      up_bps?: number
+      connection?: string
+      torrents?: number
+      downloading?: number
+      seeding?: number
+      stalled?: number
+      paused?: number
+      errored?: number
+    }
+  }
 }
 
 export type HistoryRange = '1h' | '12h' | '24h' | '7d' | '30d'
