@@ -1,40 +1,56 @@
-import { useEffect } from 'react'
-import { api } from './api'
-import { Actions } from './components/Actions'
-import { Backups } from './components/Backups'
-import { Edge } from './components/Edge'
-import { Header } from './components/Header'
-import { Machines } from './components/Machines'
-import { Media } from './components/Media'
-import { Services } from './components/Services'
-import { useNow, usePoll } from './hooks'
+import { useEffect } from "react";
+import { api } from "./api";
+import { Actions } from "./components/Actions";
+import { Audience } from "./components/Audience";
+import { Backups } from "./components/Backups";
+import { Edge } from "./components/Edge";
+import { Header } from "./components/Header";
+import { Machines } from "./components/Machines";
+import { Media } from "./components/Media";
+import { Services } from "./components/Services";
+import { useNow, usePoll } from "./hooks";
 
 export default function App() {
-  const { data: snapshot, error, updatedAt } = usePoll(api.status, 5000)
-  const now = useNow(1000)
-  const title = snapshot?.site.title
+  const { data: snapshot, error, updatedAt } = usePoll(api.status, 5000);
+  const now = useNow(1000);
+  const title = snapshot?.site.title;
 
   useEffect(() => {
-    if (title) document.title = title
-  }, [title])
+    if (title) document.title = title;
+  }, [title]);
 
   return (
     <div className="app">
       <div className="starfield" aria-hidden="true" />
-      <Header snapshot={snapshot} error={error} updatedAt={updatedAt} now={now} />
+      <Header
+        snapshot={snapshot}
+        error={error}
+        updatedAt={updatedAt}
+        now={now}
+      />
       <main className="layout">
         {snapshot ? (
           <>
             <Machines machines={snapshot.machines} now={now} />
             {snapshot.edge && <Edge edge={snapshot.edge} now={now} />}
             {(snapshot.media || snapshot.jellyfin) && (
-              <Media media={snapshot.media} jellyfin={snapshot.jellyfin} now={now} />
+              <Media
+                media={snapshot.media}
+                jellyfin={snapshot.jellyfin}
+                now={now}
+              />
             )}
-            {snapshot.backups && <Backups backups={snapshot.backups} now={now} />}
+            {snapshot.jellyfin?.history.enabled && (
+              <Audience jellyfin={snapshot.jellyfin} now={now} />
+            )}
+            {snapshot.backups && (
+              <Backups backups={snapshot.backups} now={now} />
+            )}
             <Actions runnerOk={snapshot.runner.ok} now={now} />
             {!snapshot.runner.ok && (
               <p className="notice">
-                Container states unavailable: {snapshot.runner.error}. Service checks still run.
+                Container states unavailable: {snapshot.runner.error}. Service
+                checks still run.
               </p>
             )}
             <Services services={snapshot.services} groups={snapshot.groups} />
@@ -42,11 +58,13 @@ export default function App() {
         ) : (
           <div className="loading">
             <span className="loader" />
-            <p className="muted">{error ? `Cannot load status: ${error}` : 'Establishing link…'}</p>
+            <p className="muted">
+              {error ? `Cannot load status: ${error}` : "Establishing link…"}
+            </p>
           </div>
         )}
       </main>
       <footer className="footer muted small">Executor · WireGuard only</footer>
     </div>
-  )
+  );
 }

@@ -107,9 +107,19 @@ folder, Executor also keeps a location history:
 - `GET /api/media/users`, `/api/media/places` and `/api/media/trail` serve
   the history to the page.
 
-**Presentation mode** (the eye button in the header) blurs every username on
-the page, for showing the dashboard to others. Locations and addresses stay
-visible. The choice is remembered per browser.
+**Audience map.** Desktop shows a 3D globe (globe.gl and three.js, loaded
+only when shown, so the rest of the page stays light); phones get a flat SVG
+map (d3-geo). Both draw countries from the bundled Natural Earth data, so no
+map tiles or textures are fetched. Places are sized by how often users
+connected from them, live streams pulse and arc to the configured `hub`, and
+picking a user draws their path and lists a timeline of where and on which
+device they connected. Ranges: 7, 30 or 90 days. Desktop can switch between
+the globe and the flat map.
+
+**Presentation mode** (the eye button in the header) blurs every username,
+and device names (which often contain a person's name), for showing the
+dashboard to others. Locations and addresses stay visible. The choice is
+remembered per browser.
 
 ### Backups panel (optional)
 
@@ -276,6 +286,8 @@ EXECUTOR_CONFIG=../dev/config.yaml RUNNER_URL=http://127.0.0.1:8001 EXECUTOR_STA
 
 Then open `http://127.0.0.1:1977`. For live frontend reloading, also run
 `npm run dev` in `web/` and open the Vite URL; it proxies `/api` to port 1977.
+To work on the frontend against a deployed instance instead, start it with
+`EXECUTOR_API=http://<executor host>:1977 npm run dev` from an allowed device.
 Without a Docker socket the page notes that container states are unavailable,
 which is expected. `dev/actions.yaml` holds two harmless demo actions.
 
@@ -289,6 +301,6 @@ Tests: `cd backend && ../.venv/bin/python -m pytest -q`. Tests that check a real
    bandwidth and certificate expiry (done); more actions, with ssh and http
    steps and an active-stream warning (done); backups panel (done); media
    panels (done); S3 storage size and growth (done).
-3. **Phase 3 (in progress):** now playing, location history and presentation
-   mode (done); a globe of locations on desktop and a flat map on phones,
-   with a per-user timeline.
+3. **Phase 3:** now playing, location history, presentation mode, and a
+   globe of locations on desktop and a flat map on phones, with a per-user
+   timeline (done).

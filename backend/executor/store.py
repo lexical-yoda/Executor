@@ -50,6 +50,9 @@ class Store:
         self._db.execute("PRAGMA journal_mode=WAL")
         self._db.execute("PRAGMA busy_timeout=5000")
         self._db.executescript(SCHEMA)
+        # Early rows kept form-encoded device names ("Sam's+phone").
+        self._db.execute("UPDATE sightings SET device = REPLACE(device, '+', ' ') "
+                         "WHERE device LIKE '%+%' AND device NOT LIKE '% %'")
         self._lock = threading.Lock()
 
     def close(self) -> None:

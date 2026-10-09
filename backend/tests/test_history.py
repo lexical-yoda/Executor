@@ -97,6 +97,7 @@ def test_activity_parsing():
              "Name": "alice is online from Android TV", "ShortOverview": "IP address: 203.0.113.10"}
     assert parse_activity(entry) == {"id": 9, "user_id": ALICE, "ip": "203.0.113.10",
                                      "when": parse_time(entry["Date"]), "device": "Android TV"}
+    assert parse_activity({**entry, "Name": "alice is online from Alice%27s+phone"})["device"] == "Alice's phone"
     assert parse_activity({**entry, "Type": "VideoPlayback"}) is None
     assert parse_activity({**entry, "ShortOverview": "IP address: "}) is None
 

@@ -1759,6 +1759,351 @@ a.tile:hover .tile-link {
   user-select: none;
 }
 
+/* --- Audience: globe, flat map, picker, timeline --- */
+.audience-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
+.audience-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+  gap: 14px;
+  align-items: stretch;
+}
+
+.audience-map {
+  position: relative;
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.globe-holder {
+  height: 520px;
+  cursor: grab;
+}
+
+.globe-holder:active {
+  cursor: grabbing;
+}
+
+/* globe.gl injects these with a <style> tag, which the page's CSP blocks. */
+.scene-container .clickable {
+  cursor: pointer;
+}
+
+.float-tooltip-kap {
+  position: absolute;
+  width: max-content;
+  max-width: max(50%, 220px);
+  pointer-events: none;
+  z-index: 5;
+}
+
+.geo-tip {
+  display: grid;
+  gap: 2px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  background: rgba(8, 13, 26, 0.92);
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  font: 12px var(--sans);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.geo-tip span {
+  color: var(--muted);
+}
+
+.map-loading {
+  height: 520px;
+  display: grid;
+  place-items: center;
+  color: var(--dim);
+}
+
+.spin-slow {
+  animation: spin 3s linear infinite;
+}
+
+.map-legend {
+  position: absolute;
+  left: 14px;
+  bottom: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  pointer-events: none;
+}
+
+.map-legend i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 5px;
+  vertical-align: 0;
+}
+
+.lg-place {
+  background: #f5a524;
+}
+.lg-live {
+  background: #34d399;
+  box-shadow: 0 0 6px #34d399;
+}
+.lg-hub {
+  background: #38bdf8;
+  border-radius: 1px !important;
+  transform: rotate(45deg);
+}
+.lg-trail {
+  background: #fbbf24;
+  height: 2px !important;
+  width: 14px !important;
+  border-radius: 1px !important;
+}
+
+.flat-map {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-bottom: 34px;
+}
+
+.map-grid {
+  fill: none;
+  stroke: rgba(148, 163, 184, 0.08);
+  stroke-width: 0.6;
+}
+
+.map-land {
+  fill: rgba(148, 163, 184, 0.16);
+  stroke: rgba(148, 163, 184, 0.28);
+  stroke-width: 0.5;
+}
+
+.map-trail {
+  fill: none;
+  stroke: #fbbf24;
+  stroke-width: 1.6;
+  stroke-dasharray: 5 4;
+  animation: dash 1.2s linear infinite;
+}
+
+@keyframes dash {
+  to {
+    stroke-dashoffset: -9;
+  }
+}
+
+.map-place {
+  stroke: rgba(4, 6, 12, 0.7);
+  stroke-width: 1;
+  cursor: pointer;
+}
+
+.map-live-pulse {
+  fill: none;
+  stroke: #34d399;
+  stroke-width: 2;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: live-pulse 1.6s ease-out infinite;
+}
+
+@keyframes live-pulse {
+  from {
+    transform: scale(0.6);
+    opacity: 1;
+  }
+  to {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+
+.audience-side {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 520px;
+  overflow: auto;
+}
+
+.side-title {
+  margin: 0;
+  font-size: 14px;
+}
+
+.top-places,
+.place-users {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.top-places li,
+.place-users li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.place-details h4 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0;
+  font-size: 15px;
+}
+
+.timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 12px;
+  border-left: 1px solid var(--border-strong);
+  display: grid;
+  gap: 8px;
+}
+
+.timeline-day {
+  display: block;
+  margin: 6px 0 2px -12px;
+  padding-left: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.timeline-row {
+  position: relative;
+  display: grid;
+  gap: 1px;
+  font-size: 13px;
+}
+
+.timeline-row::before {
+  content: '';
+  position: absolute;
+  left: -16px;
+  top: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.timeline-time {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.timeline-place svg {
+  vertical-align: -1px;
+  color: var(--accent);
+}
+
+.picker {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.picker-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.picker-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 20;
+  width: 260px;
+  max-height: 340px;
+  overflow: auto;
+  padding: 6px;
+  border-radius: 10px;
+  border: 1px solid var(--border-strong);
+  background: var(--panel-solid);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+  display: grid;
+  gap: 2px;
+}
+
+.picker-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 8px;
+  color: var(--muted);
+}
+
+.picker-search input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--border-strong);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+  padding: 3px 0;
+}
+
+.picker-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.picker-item:hover,
+.picker-active {
+  background: var(--accent-soft);
+}
+
+.attribution {
+  margin: 8px 2px 0;
+}
+
+.attribution a {
+  color: var(--muted);
+}
+
 /* --- Media --- */
 .media-grid {
   display: grid;
@@ -2159,8 +2504,13 @@ a.tile:hover .tile-link {
 
 @media (max-width: 960px) {
   .edge-grid,
-  .media-grid {
+  .media-grid,
+  .audience-grid {
     grid-template-columns: 1fr;
+  }
+  .globe-holder,
+  .map-loading {
+    height: 420px;
   }
   .header {
     grid-template-columns: 1fr auto;

@@ -11,7 +11,7 @@ import logging
 import time
 
 from .sources.geo import GeoIP, public_ip
-from .sources.jellyfin import Jellyfin, parse_time, summarize_sessions
+from .sources.jellyfin import Jellyfin, clean_device, parse_time, summarize_sessions
 from .store import Store
 
 log = logging.getLogger("executor.history")
@@ -51,7 +51,7 @@ class MediaHistory:
                 item = session.get("NowPlayingItem")
                 self.store.record(
                     user_id=user_id, user_name=session.get("UserName") or "Unknown", ip=ip, when=seen,
-                    source="session", device=session.get("DeviceName"), client=session.get("Client"),
+                    source="session", device=clean_device(session.get("DeviceName")), client=session.get("Client"),
                     item=summarize_sessions([session])[0]["title"] if item else None, geo=self.locate(ip))
         return watching
 

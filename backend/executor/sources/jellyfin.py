@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
+from urllib.parse import unquote_plus
 
 import httpx
 
@@ -23,6 +24,13 @@ def describe_item(item: dict) -> str:
         return f"{item['SeriesName']}{code} · {name}"
     if item.get("Type") == "Movie" and item.get("ProductionYear"):
         return f"{name} ({item['ProductionYear']})"
+    return name
+
+
+def clean_device(name: str | None) -> str | None:
+    """Device names sometimes arrive form-encoded ("Sam%27s+phone")."""
+    if name and " " not in name and ("+" in name or "%" in name):
+        return unquote_plus(name)
     return name
 
 
@@ -52,7 +60,7 @@ def summarize_sessions(sessions: list[dict]) -> list[dict]:
             "title": describe_item(item),
             "kind": item.get("Type"),
             "client": session.get("Client"),
-            "device": session.get("DeviceName"),
+            "device": clean_device(session.get("DeviceName")),
             "ip": session.get("RemoteEndPoint"),
             "paused": bool(play.get("IsPaused")),
             "transcoding": play.get("PlayMethod") == "Transcode",
@@ -74,7 +82,7 @@ def parse_activity(entry: dict) -> dict | None:
         return None
     device = ONLINE_FROM.search(entry.get("Name") or "")
     return {"id": entry.get("Id"), "user_id": entry["UserId"].replace("-", ""), "ip": ip.group(1),
-            "when": when, "device": device.group(1) if device else None}
+            "when": when, "device": clean_device(device.group(1)) if device else None}
 
 
 class Jellyfin:
