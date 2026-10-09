@@ -25,12 +25,15 @@ import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request
 from pydantic import BaseModel
 
-from .config import ENV_REF, Action, ActionsConfig, Step
+from .config import ENV_REF, Action, ActionsConfig, Step, WatchedFolder
 from .docker_api import DockerAPI
 
 log = logging.getLogger("executor.runner")
 
 MAX_LINES = 5000
+MAX_ENTRIES = 500
+TAIL_BYTES = 4096
+TAIL_LINES = 5
 KEEP_RUNS = 50
 ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 # Never hand these to a child process.
@@ -78,6 +81,38 @@ class Run:
     def detail(self, offset: int) -> dict:
         offset = max(0, offset)
         return {**self.summary(), "lines": self.lines[offset:], "next_offset": len(self.lines)}
+
+
+def describe_folder(folder: WatchedFolder) -> dict:
+    """Names, sizes and modification times of the files in a watched folder,
+    newest first, plus the last lines of the files named in ``tail``. Never
+    follows symlinks and never reads any other file."""
+    path = Path(folder.path)
+    entries: list[dict] = []
+    try:
+        with os.scandir(path) as listing:
+            for entry in listing:
+                if not entry.is_file(follow_symlinks=False):
+                    continue
+                info = entry.stat(follow_symlinks=False)
+                entries.append({"name": entry.name, "size": info.st_size, "mtime": info.st_mtime})
+    except OSError as exc:
+        return {"id": folder.id, "ok": False, "error": exc.strerror or exc.__class__.__name__,
+                "entries": [], "tails": {}}
+    entries.sort(key=lambda e: e["mtime"], reverse=True)
+    tails: dict[str, list[str]] = {}
+    for name in folder.tail:
+        file = path / name
+        if file.is_symlink() or not file.is_file():
+            continue
+        try:
+            with file.open("rb") as handle:
+                handle.seek(max(0, file.stat().st_size - TAIL_BYTES))
+                text = handle.read().decode("utf-8", errors="replace")
+        except OSError:
+            continue
+        tails[name] = [line for line in text.splitlines() if line.strip()][-TAIL_LINES:]
+    return {"id": folder.id, "ok": True, "error": None, "entries": entries[:MAX_ENTRIES], "tails": tails}
 
 
 class StartRequest(BaseModel):
@@ -336,6 +371,10 @@ def create_runner_app(actions: ActionsConfig, token: str, docker: DockerAPI, dat
             return await docker.containers()
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(502, f"Docker unavailable: {exc}") from None
+
+    @app.get("/files", dependencies=guarded)
+    async def files() -> list[dict]:
+        return await asyncio.gather(*(asyncio.to_thread(describe_folder, f) for f in actions.files))
 
     @app.get("/actions", dependencies=guarded)
     async def list_actions() -> list[dict]:

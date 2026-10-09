@@ -51,3 +51,21 @@ export function gib(value: number): string {
 export function pct(value: number | null | undefined): string {
   return value == null ? '—' : `${value < 10 ? value.toFixed(1) : Math.round(value)}%`
 }
+
+export function bytes(value: number | null): string {
+  if (value === null) return '—'
+  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB']
+  let n = value
+  let i = 0
+  while (n >= 1024 && i < units.length - 1) {
+    n /= 1024
+    i += 1
+  }
+  return `${n < 10 && i > 0 ? n.toFixed(1) : Math.round(n)} ${units[i]}`
+}
+
+export function until(ms: number, now: number): string {
+  const seconds = Math.round((ms - now) / 1000)
+  if (seconds <= 60) return 'due now'
+  return `in ${duration(seconds)}`
+}

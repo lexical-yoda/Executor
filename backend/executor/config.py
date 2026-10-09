@@ -119,10 +119,46 @@ class JellyfinIntegration(BaseModel):
     timeout: float = 8.0
 
 
+class DuplicatiIntegration(BaseModel):
+    # Server URL as seen from the web container. The UI password comes from
+    # the environment (DUPLICATI_PASSWORD), never from this file.
+    url: str
+    timeout: float = 10.0
+
+
+class FileBackup(BaseModel):
+    # A backup judged by the files it leaves in a folder the runner watches.
+    folder: Slug
+    name: str
+    schedule: str = ""
+    max_age_hours: float = 26
+    # Files that must all exist, be non-empty and be fresh...
+    expect: list[str] = []
+    # ...or a glob whose newest match must be fresh.
+    pattern: str | None = None
+    # A file whose non-empty content means the last run failed.
+    error_file: str | None = None
+    # A log whose last line is shown.
+    log_file: str | None = None
+
+    @model_validator(mode="after")
+    def _shape(self) -> FileBackup:
+        if bool(self.expect) == bool(self.pattern):
+            raise ValueError(f"backup '{self.name}' needs exactly one of expect or pattern")
+        return self
+
+
+class BackupsIntegration(BaseModel):
+    duplicati: DuplicatiIntegration | None = None
+    files: list[FileBackup] = []
+    interval: float = 60
+
+
 class Integrations(BaseModel):
     beszel: BeszelIntegration | None = None
     edge: EdgeIntegration | None = None
     jellyfin: JellyfinIntegration | None = None
+    backups: BackupsIntegration | None = None
 
 
 class Config(BaseModel):
@@ -216,8 +252,18 @@ class Action(BaseModel):
     steps: list[Step] = Field(min_length=1)
 
 
+class WatchedFolder(BaseModel):
+    # A folder whose file names, sizes and times the runner may report, for
+    # backups the web container cannot read itself (root-only folders).
+    id: Slug
+    path: str
+    # Plain file names in the folder whose last lines may be reported.
+    tail: list[Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9._-]+$")]] = []
+
+
 class ActionsConfig(BaseModel):
     ssh: dict[str, SshTarget] = {}
+    files: list[WatchedFolder] = []
     actions: list[Action] = []
 
     @model_validator(mode="after")
@@ -225,6 +271,9 @@ class ActionsConfig(BaseModel):
         ids = [a.id for a in self.actions]
         if len(ids) != len(set(ids)):
             raise ValueError("duplicate action id")
+        folders = [f.id for f in self.files]
+        if len(folders) != len(set(folders)):
+            raise ValueError("duplicate watched folder id")
         for action in self.actions:
             for step in action.steps:
                 if step.ssh and step.ssh.target not in self.ssh:

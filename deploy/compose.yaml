@@ -27,6 +27,8 @@ services:
       BESZEL_PASSWORD: ${BESZEL_PASSWORD:-}
       # Optional Jellyfin API key, to warn about active streams.
       JELLYFIN_API_KEY: ${JELLYFIN_API_KEY:-}
+      # Optional Duplicati UI password, for the backups panel.
+      DUPLICATI_PASSWORD: ${DUPLICATI_PASSWORD:-}
     volumes:
       - ${EXECUTOR_DIR:?set EXECUTOR_DIR in .env}/config/config.yaml:/config/config.yaml:ro
     extra_hosts:
@@ -69,6 +71,8 @@ services:
       - ${STACKS_DIR:?set STACKS_DIR in .env}:${STACKS_DIR}:ro
       # SSH key and pinned known_hosts for ssh steps.
       - ${EXECUTOR_DIR}/ssh:/ssh:ro
+      # Folders the backups panel reports on (`files:` in actions.yaml), read-only.
+      - ${WATCH_DIR:-/var/empty}:/watch:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     # The web container reaches the runner only over `internal`. `egress` gives

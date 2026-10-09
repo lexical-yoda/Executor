@@ -49,6 +49,26 @@ integrations:
   # show_streams. The API key comes from JELLYFIN_API_KEY in .env.
   jellyfin:
     url: http://host.docker.internal:8096
+  # Optional. Backups panel: Duplicati jobs (password from DUPLICATI_PASSWORD),
+  # and backups judged by the files they leave in a folder the runner watches
+  # (`files:` in actions.yaml). Use `expect` for a fixed set of files, or
+  # `pattern` for the newest of a rotating set.
+  backups:
+    duplicati:
+      url: http://host.docker.internal:8200
+    files:
+      - folder: db-dumps
+        name: Database dumps
+        schedule: Daily 02:30
+        max_age_hours: 26
+        expect: [app.sql, vault.sqlite3]
+      - folder: config-pull
+        name: VPS config pull
+        schedule: Daily 02:45
+        max_age_hours: 26
+        pattern: "config-*.tar.gz"
+        error_file: last-error.txt
+        log_file: history.log
 
 # Display order of service groups. Groups not listed here follow in order of use.
 groups:

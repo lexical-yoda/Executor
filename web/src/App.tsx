@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { api } from './api'
 import { Actions } from './components/Actions'
+import { Backups } from './components/Backups'
 import { Edge } from './components/Edge'
 import { Header } from './components/Header'
 import { Machines } from './components/Machines'
@@ -25,6 +26,7 @@ export default function App() {
           <>
             <Machines machines={snapshot.machines} now={now} />
             {snapshot.edge && <Edge edge={snapshot.edge} now={now} />}
+            {snapshot.backups && <Backups backups={snapshot.backups} now={now} />}
             <Actions runnerOk={snapshot.runner.ok} now={now} />
             {!snapshot.runner.ok && (
               <p className="notice">

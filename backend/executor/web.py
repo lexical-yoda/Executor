@@ -15,6 +15,7 @@ from .config import Config
 from .monitor import Monitor, RunnerClient
 from .security import Guard
 from .sources.beszel import RANGES, Beszel
+from .sources.duplicati import Duplicati
 from .sources.jellyfin import Jellyfin
 
 log = logging.getLogger("executor.web")
@@ -22,8 +23,8 @@ log = logging.getLogger("executor.web")
 
 def create_web_app(config: Config, runner: RunnerClient | None, static_dir: Path | None,
                    start_monitor: bool = True, beszel: Beszel | None = None,
-                   jellyfin: Jellyfin | None = None) -> FastAPI:
-    monitor = Monitor(config, runner, beszel)
+                   jellyfin: Jellyfin | None = None, duplicati: Duplicati | None = None) -> FastAPI:
+    monitor = Monitor(config, runner, beszel, duplicati)
     history_cache: dict[tuple[str, str], tuple[float, dict]] = {}
     streams_cache: list = []  # [(monotonic time, body)]
 

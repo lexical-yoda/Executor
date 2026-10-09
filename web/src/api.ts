@@ -105,6 +105,7 @@ export interface Snapshot {
   runner: { ok: boolean; error: string | null }
   beszel: { configured: boolean; ok: boolean; error: string | null }
   edge: Edge | null
+  backups: Backups | null
 }
 
 export interface Bandwidth {
@@ -140,6 +141,51 @@ export interface Edge {
   bandwidth: Bandwidth | null
   bandwidth_error: string | null
   certificates: Certificate[]
+}
+
+export type BackupStatus = 'ok' | 'warning' | 'failed' | 'stale' | 'running' | 'missing' | 'unknown'
+
+export interface BackupRun {
+  result: string
+  finished: number | null
+  warnings: number
+  errors: number
+  added_bytes: number | null
+}
+
+export interface DuplicatiJob {
+  id: string
+  name: string
+  status: BackupStatus
+  last_finished: number | null
+  last_duration_s: number | null
+  last_result: string | null
+  last_error: string | null
+  source_bytes: number | null
+  target_bytes: number | null
+  versions: number | null
+  next_run: number | null
+  repeat: string | null
+  stale_after_s: number | null
+  progress: { phase: string | null; fraction: number | null } | null
+  history: BackupRun[]
+}
+
+export interface FileBackupStatus {
+  name: string
+  schedule: string
+  status: BackupStatus
+  last: number | null
+  files: { name: string; size: number | null; mtime: number | null; state: BackupStatus }[]
+  kept: number | null
+  log_line: string | null
+  error: string | null
+}
+
+export interface Backups {
+  checked_at: number | null
+  duplicati: { configured: boolean; ok: boolean; error: string | null; jobs: DuplicatiJob[]; paused: boolean }
+  files: FileBackupStatus[]
 }
 
 export type HistoryRange = '1h' | '12h' | '24h' | '7d' | '30d'

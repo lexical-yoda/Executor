@@ -11,7 +11,9 @@ import httpx
 
 from .checks import Probe, http_probe, local_stats, ping, tcp_probe
 from .config import Config, Machine, Service
+from .sources.backups import evaluate_files
 from .sources.beszel import Beszel, summarize, to_series
+from .sources.duplicati import Duplicati
 from .sources.edge import check_certificate, fetch_bandwidth
 
 log = logging.getLogger("executor.monitor")
@@ -40,6 +42,11 @@ class RunnerClient:
             raise RuntimeError(detail or f"runner answered HTTP {response.status_code}")
         return response.json()
 
+    async def files(self) -> list[dict]:
+        response = await self._client.get("/files")
+        response.raise_for_status()
+        return response.json()
+
 
 def service_status(service: Service, probe: Probe | None,
                    containers: dict[str, dict] | None) -> tuple[str, list[dict]]:
@@ -66,10 +73,16 @@ def service_status(service: Service, probe: Probe | None,
 
 class Monitor:
     def __init__(self, config: Config, runner: RunnerClient | None,
-                 beszel: Beszel | None = None) -> None:
+                 beszel: Beszel | None = None, duplicati: Duplicati | None = None) -> None:
         self.config = config
         self.runner = runner
         self.beszel = beszel
+        self.duplicati = duplicati
+        self.backup_settings = config.integrations.backups
+        self.duplicati_status: dict | None = None
+        self.duplicati_error: str | None = None if duplicati else "not configured"
+        self.backup_files: list[dict] = []
+        self.backups_checked: float | None = None
         # Beszel: system name -> system record, machine id -> summary / sparkline.
         self.beszel_systems: dict[str, dict] = {}
         self.machine_stats: dict[str, dict] = {}
@@ -99,6 +112,8 @@ class Monitor:
         ]
         if self.edge_settings:
             self._tasks.append(asyncio.create_task(self._loop(self.poll_edge, self.edge_settings.interval)))
+        if self.backup_settings:
+            self._tasks.append(asyncio.create_task(self._loop(self.poll_backups, self.backup_settings.interval)))
         if self.beszel:
             self._tasks += [
                 asyncio.create_task(self._loop(self.poll_beszel, settings.stats_interval)),
@@ -113,6 +128,8 @@ class Monitor:
         await self._http_insecure.aclose()
         if self.beszel:
             await self.beszel.close()
+        if self.duplicati:
+            await self.duplicati.close()
 
     @staticmethod
     async def _loop(func, interval: float) -> None:
@@ -174,6 +191,36 @@ class Monitor:
         if settings.certificates and time.monotonic() - self._certs_checked > 3600:
             self.certificates = list(await asyncio.gather(*(check_certificate(h) for h in settings.certificates)))
             self._certs_checked = time.monotonic()
+
+    async def poll_backups(self) -> None:
+        settings = self.backup_settings
+        assert settings is not None
+        if self.duplicati:
+            try:
+                self.duplicati_status = await self.duplicati.status()
+                self.duplicati_error = None
+            except Exception as exc:  # noqa: BLE001
+                log.warning("duplicati status failed: %s", exc)
+                self.duplicati_error = (str(exc) if isinstance(exc, RuntimeError) else type(exc).__name__)[:160]
+        if settings.files:
+            folders: dict[str, dict] = {}
+            if self.runner:
+                try:
+                    folders = {f["id"]: f for f in await self.runner.files()}
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("runner folder report failed: %s", exc)
+            self.backup_files = [evaluate_files(item, folders.get(item.folder)) for item in settings.files]
+        self.backups_checked = time.time()
+
+    def _backups(self) -> dict | None:
+        if not self.backup_settings:
+            return None
+        return {
+            "checked_at": self.backups_checked,
+            "duplicati": {"configured": self.duplicati is not None, "ok": self.duplicati_error is None,
+                          "error": self.duplicati_error, **(self.duplicati_status or {"jobs": [], "paused": False})},
+            "files": self.backup_files,
+        }
 
     def _edge(self) -> dict | None:
         if not self.edge_settings:
@@ -285,4 +332,5 @@ class Monitor:
             "beszel": {"configured": self.beszel is not None, "ok": self.beszel_error is None,
                        "error": self.beszel_error},
             "edge": self._edge(),
+            "backups": self._backups(),
         }

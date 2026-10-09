@@ -23,6 +23,17 @@ ssh:
     host: 10.8.0.1
     user: executor
 
+# Folders whose file names, sizes and times the runner may report to the
+# backups panel, for backups that write to folders only root can read. Paths
+# are inside /watch (WATCH_DIR in .env). `tail` names files whose last lines
+# may be reported. The runner never reads any other file.
+files:
+  - id: db-dumps
+    path: /watch/db-dumps
+  - id: config-pull
+    path: /watch/config-pull
+    tail: [history.log, last-error.txt]
+
 actions:
   - id: reset-download-stack
     title: Reset download stack

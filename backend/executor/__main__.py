@@ -49,7 +49,16 @@ def main() -> None:
             jellyfin = Jellyfin(media.url, os.environ["JELLYFIN_API_KEY"], timeout=media.timeout)
         elif media:
             logging.getLogger("executor").warning("Jellyfin configured but JELLYFIN_API_KEY not set")
-        app = create_web_app(config, runner, static, beszel=beszel, jellyfin=jellyfin)
+        duplicati = None
+        backups = config.integrations.backups
+        if backups and backups.duplicati and os.environ.get("DUPLICATI_PASSWORD"):
+            from .sources.duplicati import Duplicati
+
+            duplicati = Duplicati(backups.duplicati.url, os.environ["DUPLICATI_PASSWORD"],
+                                  timeout=backups.duplicati.timeout)
+        elif backups and backups.duplicati:
+            logging.getLogger("executor").warning("Duplicati configured but DUPLICATI_PASSWORD not set")
+        app = create_web_app(config, runner, static, beszel=beszel, jellyfin=jellyfin, duplicati=duplicati)
         uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "1977")), **common)
 
     elif role == "runner":

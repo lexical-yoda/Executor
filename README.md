@@ -14,7 +14,7 @@ One Docker image runs in two roles, as two containers in one stack:
 | Container | Role | Can reach |
 |---|---|---|
 | `executor` | Serves the page and `/api`, probes services and machines | The Docker host, the network, the runner |
-| `executor-runner` | Executes actions; the only container holding the Docker socket | The Docker socket, `executor` over an internal network, and outbound connections for ssh and http steps |
+| `executor-runner` | Executes actions and reports container states and watched folders; the only container holding the Docker socket | The Docker socket, `executor` over an internal network, and outbound connections for ssh and http steps |
 
 - **Backend:** Python, FastAPI and uvicorn, in `backend/executor/`.
 - **Frontend:** React and TypeScript built with Vite, in `web/`. The build is
@@ -72,6 +72,29 @@ so the key can only read figures and only works from the VPS. The VPS serves
 the resulting file on a private interface to the Executor host only. Only
 outbound transfer is billed; the allowance shown is the account's pooled
 credits (instance credits accruing hourly plus the free monthly credits).
+
+### Backups panel (optional)
+
+One card per backup, with its state (OK, warnings, failed, overdue, running),
+when it last finished, and what comes next.
+
+- **Duplicati jobs** are read from Duplicati's API with the UI password
+  (`DUPLICATI_PASSWORD`), because Duplicati has no read-only login. Each card
+  shows the last run's duration and added data, a strip of the last ten
+  results, source and stored sizes, versions kept, and the next scheduled run.
+  A job is overdue when its last run is older than its repeat interval plus a
+  margin. Destinations, which can hold storage credentials, are never read
+  into the result.
+- **File-based backups**, such as nightly database dumps, are judged by the
+  files they leave behind. Such folders are often readable only by root, so
+  the runner reports them: `files:` in `actions.yaml` names each folder (inside
+  `WATCH_DIR`, mounted read-only at `/watch`), and the runner returns only file
+  names, sizes and times, plus the last lines of the files listed under
+  `tail`. It never follows symlinks. `config.yaml` then says how to judge each
+  folder: `expect` (a fixed set of files that must all be fresh and non-empty)
+  or `pattern` (the newest of a rotating set), `max_age_hours`, an optional
+  `error_file` whose content means failure, and an optional `log_file` whose
+  last line is shown.
 
 ### Actions
 
@@ -151,6 +174,9 @@ an allowed browser.
   stripped from the environment of every command it runs. The runner also has
   a network of its own for the outbound connections of `ssh` and `http` steps; holding the
   Docker socket, it could reach the network through a new container anyway.
+- **The web container never names a path.** The folders the runner may report
+  on are fixed in `actions.yaml`, like the commands, and the runner reports
+  only file names, sizes, times and the tails of files listed there.
 - **Remote hosts trust names, not commands.** An `ssh` step's key should work
   only from the Executor host and only through a dispatcher that accepts a
   fixed list of names (see "SSH steps").
@@ -213,7 +239,7 @@ Tests: `cd backend && ../.venv/bin/python -m pytest -q`. Tests that check a real
 1. **Phase 1:** status for every service and machine, and one-click actions.
 2. **Phase 2 (in progress):** machine stats and history from Beszel (done);
    bandwidth and certificate expiry (done); more actions, with ssh and http
-   steps and an active-stream warning (done); media panels and a backups
-   panel.
+   steps and an active-stream warning (done); backups panel (done); media
+   panels.
 3. **Phase 3:** a media section: now playing, active users, a globe of login
    locations, and per-user location history.
