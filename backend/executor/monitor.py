@@ -254,6 +254,8 @@ class Monitor:
         previous = {s.id: s.name for s in self.services()} | {i: i for i in self.plan.removed}
         self.plan = plan(self.config.services, self.containers, self.stack_dirs, self.stack_memory,
                          self.config.discovery)
+        if self.plan.learned and self.store:
+            self._safely(self.store.set_state, "container_stacks", json.dumps(self.stack_memory))
         current = {s.id: s.name for s in self.services()}
         if self._plan_seen is None:
             # The first full picture is the baseline.

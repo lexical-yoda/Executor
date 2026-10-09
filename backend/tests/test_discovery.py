@@ -112,3 +112,17 @@ def test_monitor_shows_discovered_stacks_and_logs_changes():
     monitor._replan()
     notes = next(s for s in monitor.snapshot()["services"] if s["id"] == "stack-notes")
     assert notes["status"] == "unknown" and notes["error"] == "Stack stopped"
+
+
+def test_a_service_gone_before_it_was_seen_matches_its_folder_by_name():
+    firefox = Service(id="firefox", name="Firefox", group="Tools", containers=["safe-firefox"])
+    kuma = Service(id="uptime-kuma", name="Uptime Kuma", group="Infra", containers=["uptime-kuma"])
+    memory: dict = {}
+    result = plan([firefox, kuma], {}, ["firefox", "uptimekuma"], memory, SETTINGS)
+    assert result.configured == [(firefox, "stopped"), (kuma, "stopped")]
+    assert result.discovered == []  # no duplicate tile for the same stack
+    assert result.learned and memory["safe-firefox"] == ["firefox"]
+    # The folder is deleted later: the service goes with it.
+    assert plan([firefox], {}, [], memory, SETTINGS).removed == ["firefox"]
+    # Never linked to any folder: kept (shown down), since Executor cannot tell.
+    assert plan([firefox], {}, [], {}, SETTINGS).configured == [(firefox, "active")]

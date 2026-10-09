@@ -81,7 +81,9 @@ actually runs instead of only what is listed:
   A configured service whose containers are gone shows as stopped while its
   stack folder exists and disappears once the folder is deleted, so deleting
   a stack removes its tile. The stack each container belonged to is remembered
-  in the data folder, because a removed container no longer says.
+  in the data folder, because a removed container no longer says; a service
+  never seen running is matched to a folder named like it or its container
+  (compared without case, spaces or dashes).
 - New and removed stacks are written to the event log.
 
 Configured services keep their names, groups, links and checks; discovery only

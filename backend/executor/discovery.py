@@ -26,6 +26,11 @@ _NOT_SLUG = re.compile(r"[^a-z0-9]+")
 TRUE = {"1", "true", "yes", "on"}
 
 
+def norm(name: str) -> str:
+    """Stack names compared loosely: "uptime-kuma", "Uptime Kuma" and "uptimekuma" match."""
+    return _NOT_SLUG.sub("", name.lower())
+
+
 def slug(text: str) -> str:
     return _NOT_SLUG.sub("-", text.lower()).strip("-") or "stack"
 
@@ -44,12 +49,14 @@ class Plan:
     removed: list[str] = field(default_factory=list)
     # Services made from stacks no configured service covers, with their stack name.
     discovered: list[tuple[Service, str, bool]] = field(default_factory=list)
+    # Whether stack names were newly learned (into the memory passed in).
+    learned: bool = False
 
 
 def _names(c: dict) -> set[str]:
     """The names a container's stack may go by: its compose project and its folder."""
     names = {c.get("project"), posixpath.basename((c.get("working_dir") or "").rstrip("/"))}
-    return {n.lower() for n in names if n}
+    return {norm(n) for n in names if n}
 
 
 def remember(memory: dict[str, list[str]], containers: dict[str, dict]) -> bool:
@@ -74,7 +81,7 @@ def _first(containers: list[dict], label: str) -> str | None:
 def plan(services: list[Service], containers: dict[str, dict] | None, stack_dirs: list[str] | None,
          memory: dict[str, list[str]], settings: Discovery | None) -> Plan:
     result = Plan()
-    folders = {s.lower() for s in stack_dirs} if stack_dirs is not None else None
+    folders = {norm(s) for s in stack_dirs} if stack_dirs is not None else None
     claimed = {name for s in services for name in s.containers}
 
     # Configured services: active, stopped (stack still there) or removed (stack gone).
@@ -83,6 +90,16 @@ def plan(services: list[Service], containers: dict[str, dict] | None, stack_dirs
         stacks = {n for c in service.containers for n in memory.get(c, [])}
         if containers is not None:
             stacks |= {n for c in service.containers if c in containers for n in _names(containers[c])}
+        if not stacks and folders is not None:
+            # Never seen running (or gone before Executor learned its stack): a
+            # stack folder named like the service or its container is its stack.
+            stacks = {n for n in (norm(service.id), norm(service.name), *map(norm, service.containers))
+                      if n in folders}
+            # Remember the link, so deleting the folder later removes the service.
+            for c in service.containers:
+                if stacks and c not in memory:
+                    memory[c] = sorted(stacks)
+                    result.learned = True
         covered_stacks |= stacks
         state = "active"
         gone = containers is not None and service.containers and not any(c in containers for c in service.containers)
@@ -102,7 +119,7 @@ def plan(services: list[Service], containers: dict[str, dict] | None, stack_dirs
         stack = c.get("project")
         if stack:
             by_stack.setdefault(stack, []).append({**c, "name": name})
-    ignore = {s.lower() for s in settings.ignore}
+    ignore = {norm(s) for s in settings.ignore}
     taken = {s.id for s in services}
     for stack, members in sorted(by_stack.items()):
         if _names(members[0]) & (ignore | covered_stacks):
@@ -136,7 +153,7 @@ def plan(services: list[Service], containers: dict[str, dict] | None, stack_dirs
     if folders is not None:
         running = {n for members in by_stack.values() for m in members for n in _names(m)}
         for name in sorted(stack_dirs or []):
-            low = name.lower()
+            low = norm(name)
             if low in running or low in covered_stacks or low in ignore:
                 continue
             service_id = f"stack-{slug(name)}"
