@@ -59,6 +59,8 @@ def test_duplicati_client_logs_in_again_after_expiry():
     calls = {"login": 0}
 
     def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host != "192.168.0.10":
+            return httpx.Response(403, json={"Error": f"Invalid hostname: {request.url.host}", "Code": 403})
         if request.url.path == "/api/v1/auth/login":
             calls["login"] += 1
             body = json.loads(request.content)
@@ -79,18 +81,20 @@ def test_duplicati_client_logs_in_again_after_expiry():
         return httpx.Response(404)
 
     async def check():
-        client = Duplicati("http://backup.example:8200", "pw", transport=httpx.MockTransport(handler))
+        client = Duplicati("http://192.168.0.10:8200", "pw", transport=httpx.MockTransport(handler))
         status = await client.status(NOW)
         assert calls["login"] == 2
         assert status["jobs"][0]["status"] == "running"
         assert status["jobs"][0]["progress"] == {"phase": "Backup_ProcessingFiles", "fraction": 0.5}
-        wrong = Duplicati("http://backup.example:8200", "nope", transport=httpx.MockTransport(handler))
-        try:
-            await wrong.status(NOW)
-        except RuntimeError as exc:
-            assert "refused the password" in str(exc)
-        else:
-            raise AssertionError("expected a refusal")
+        for url, password, message in (("http://192.168.0.10:8200", "nope", "refused the password"),
+                                        ("http://backup.example:8200", "pw", "Invalid hostname")):
+            other = Duplicati(url, password, transport=httpx.MockTransport(handler))
+            try:
+                await other.status(NOW)
+            except RuntimeError as exc:
+                assert message in str(exc)
+            else:
+                raise AssertionError("expected a refusal")
 
     asyncio.run(check())
 

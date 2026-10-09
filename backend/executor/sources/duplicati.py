@@ -146,8 +146,16 @@ class Duplicati:
     async def _login(self) -> None:
         response = await self._client.post("/api/v1/auth/login",
                                            json={"Password": self._password, "RememberMe": False})
-        if response.status_code in (400, 401, 403):
+        if response.status_code == 401:
             raise RuntimeError("Duplicati refused the password")
+        if response.status_code in (400, 403):
+            # For example "Invalid hostname": Duplicati only answers host names
+            # on its allowlist, so use an IP address in the URL.
+            try:
+                detail = response.json().get("Error")
+            except ValueError:
+                detail = None
+            raise RuntimeError(f"Duplicati refused the login: {detail or response.status_code}")
         response.raise_for_status()
         self._token = response.json().get("AccessToken")
         if not self._token:

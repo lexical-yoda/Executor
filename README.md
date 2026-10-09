@@ -83,7 +83,9 @@ when it last finished, and what comes next.
   shows the last run's duration and added data, a strip of the last ten
   results, source and stored sizes, versions kept, and the next scheduled run.
   A job is overdue when its last run is older than its repeat interval plus a
-  margin. Destinations, which can hold storage credentials, are never read
+  margin. Point `integrations.backups.duplicati.url` at an IP address:
+  Duplicati refuses host names that are not on its allowlist, including
+  `host.docker.internal`. Destinations, which can hold storage credentials, are never read
   into the result.
 - **File-based backups**, such as nightly database dumps, are judged by the
   files they leave behind. Such folders are often readable only by root, so

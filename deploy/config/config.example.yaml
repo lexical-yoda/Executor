@@ -55,7 +55,10 @@ integrations:
   # `pattern` for the newest of a rotating set.
   backups:
     duplicati:
-      url: http://host.docker.internal:8200
+      # Use an IP address: Duplicati refuses host names that are not on its
+      # allowlist (DUPLICATI__WEBSERVICE_ALLOWED_HOSTNAMES), such as
+      # host.docker.internal.
+      url: http://192.168.0.10:8200
     files:
       - folder: db-dumps
         name: Database dumps
