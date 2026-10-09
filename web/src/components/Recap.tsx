@@ -93,6 +93,11 @@ export function RecapHighlights({ data }: { data: RecapData }) {
     place && { label: 'Busiest city', value: [place.city, place.country_code].filter(Boolean).join(', '), sub: `${place.plays} plays` },
     m.prime_hour != null && { label: 'Prime time', value: hourName(m.prime_hour)!, sub: 'most plays start' },
     m.countries > 0 && { label: 'Countries', value: String(m.countries), sub: 'tuned in' },
+    data.photos?.added != null && {
+      label: 'New photos',
+      value: data.photos.added.toLocaleString(),
+      sub: data.photos.bytes_growth != null ? `${signed(data.photos.bytes_growth)} to the library` : 'added to Immich',
+    },
   ].filter(Boolean) as { label: string; value: string; sub: string }[]
   return (
     <ul className="recap-highlights">
@@ -209,6 +214,18 @@ export function RecapDrawer() {
                 {data.backups.succeeded} succeeded · {data.backups.warnings} with warnings · {data.backups.failed} failed
               </span>
             </li>
+            {data.photos && (
+              <li>
+                <RowButton onClick={() => open('photos', '', 'archives')}>
+                  <span>Photos</span>
+                  <span className="small muted num">
+                    {data.photos.added != null ? `${data.photos.added.toLocaleString()} added` : 'no activity data'}
+                    {data.photos.added_before != null ? ` (${data.photos.added_before.toLocaleString()} the period before)` : ''}
+                    {data.photos.bytes_growth != null ? ` · ${signed(data.photos.bytes_growth)}` : ''} · {bytes(data.photos.total_bytes)} in total
+                  </span>
+                </RowButton>
+              </li>
+            )}
             <li>
               <span>Actions</span>
               <span className="small muted num">
@@ -216,7 +233,7 @@ export function RecapDrawer() {
               </span>
             </li>
           </ul>
-          <SourceNote source="Executor's own history (Jellyfin activity log, checks, event log, qBittorrent)" at={data.to} />
+          <SourceNote source="Executor's own history (Jellyfin activity log, checks, event log, qBittorrent, Immich)" at={data.to} />
         </>
       )}
     </div>

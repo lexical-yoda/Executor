@@ -24,6 +24,7 @@ from .security import Guard
 from .sources.aws import CloudWatchS3
 from .sources.beszel import RANGES, Beszel
 from .sources.duplicati import Duplicati
+from .sources.immich import Immich
 from .sources.jellyfin import Jellyfin
 from .sources.media import MediaSources
 from .store import Store
@@ -119,9 +120,9 @@ def create_web_app(config: Config, runner: RunnerClient | None, static_dir: Path
                    jellyfin: Jellyfin | None = None, duplicati: Duplicati | None = None,
                    media: MediaSources | None = None, cloudwatch: CloudWatchS3 | None = None,
                    history: MediaHistory | None = None, store: Store | None = None,
-                   tiles_dir: Path | None = None) -> FastAPI:
+                   tiles_dir: Path | None = None, immich: Immich | None = None) -> FastAPI:
     store = store or (history.store if history else None)
-    monitor = Monitor(config, runner, beszel, duplicati, media, cloudwatch, history, store)
+    monitor = Monitor(config, runner, beszel, duplicati, media, cloudwatch, history, store, immich)
     tile_name = re.compile(r"^[a-z0-9][a-z0-9-]{0,40}$")
     recap_cache: dict[int, tuple[float, dict]] = {}
     user_id_pattern = re.compile(r"^[0-9a-f]{32}$")
@@ -269,9 +270,16 @@ def create_web_app(config: Config, runner: RunnerClient | None, static_dir: Path
         if cached and now - cached[0] < 120:
             return cached[1]
         backups = monitor.snapshot().get("backups") or {}
-        body = build_recap(ledger(), days=days, storage=backups.get("storage"))
+        body = build_recap(ledger(), days=days, storage=backups.get("storage"), photos=monitor.photos_recap(days))
         recap_cache[days] = (now, body)
         return body
+
+    @app.get("/api/photos/history")
+    async def photo_history() -> dict:
+        """A year of photo library activity and its size over time."""
+        if not monitor.immich_settings:
+            raise HTTPException(404, "Immich is not configured.")
+        return monitor.photo_history()
 
     @app.get("/api/map/tilesets")
     async def tilesets() -> dict:

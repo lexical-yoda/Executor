@@ -83,6 +83,12 @@ integrations:
       url: http://host.docker.internal:7878
     qbittorrent:
       url: http://host.docker.internal:8080
+  # Optional. Photo library card: size, counts, jobs and activity from Immich.
+  # The key (IMMICH_API_KEY in .env) belongs to an admin and needs only
+  # server.statistics, server.storage, server.versionCheck, queue.read and
+  # user.read.
+  immich:
+    url: http://host.docker.internal:2283
   # Optional. Backups panel: Duplicati jobs (password from DUPLICATI_PASSWORD),
   # and backups judged by the files they leave in a folder the runner watches
   # (`files:` in actions.yaml). Use `expect` for a fixed set of files, or

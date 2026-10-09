@@ -62,7 +62,8 @@ def summarize_plays(plays: list[dict]) -> dict:
     }
 
 
-def build_recap(store: Store, now: float | None = None, days: int = 7, storage: list[dict] | None = None) -> dict:
+def build_recap(store: Store, now: float | None = None, days: int = 7, storage: list[dict] | None = None,
+                photos: dict | None = None) -> dict:
     now = now or time.time()
     start, previous = now - days * DAY, now - 2 * days * DAY
     plays = summarize_plays(store.plays(start, now, now))
@@ -102,5 +103,7 @@ def build_recap(store: Store, now: float | None = None, days: int = 7, storage: 
                     "glacier_growth": next((s["aws"]["growth_7d"] for s in storage or []
                                             if s.get("aws") and s["aws"].get("growth_7d") is not None), None)},
         "actions": {"succeeded": count("action", "good"), "failed": count("action", "bad")},
+        # Uploads to the photo library and its growth, when Immich is configured.
+        "photos": photos,
         "machines": store.machine_averages(start, now),
     }

@@ -205,14 +205,22 @@ function HolonetTile({ s }: { s: Snapshot }) {
 function ArchivesTile({ s }: { s: Snapshot }) {
   const { showDeck, open, now } = useApp()
   const b = s.backups
-  if (!b) return null
-  const store = b.storage[0]
-  const worst = [...b.duplicati.jobs.map((j) => j.status), ...b.files.map((f) => f.status)]
+  const lib = s.photos?.library
+  if (!b && !lib) return null
+  const store = b?.storage[0]
+  const worst = b ? [...b.duplicati.jobs.map((j) => j.status), ...b.files.map((f) => f.status)] : []
   const tone = worst.some((x) => x === 'failed' || x === 'missing') ? 'down' : worst.some((x) => x === 'stale' || x === 'warning') ? 'degraded' : 'up'
   return (
-    <Tile title="Archives" subtitle="backups" icon={<Archive size={15} />} onOpen={() => showDeck('archives')} tone={tone} className="tile-archives">
+    <Tile
+      title="Archives"
+      subtitle={b && lib ? 'backups and photos' : b ? 'backups' : 'photos'}
+      icon={<Archive size={15} />}
+      onOpen={() => showDeck('archives')}
+      tone={tone}
+      className="tile-archives"
+    >
       <ul className="archive-rows">
-        {b.duplicati.jobs.map((j) => (
+        {b?.duplicati.jobs.map((j) => (
           <li key={j.id}>
             <RowButton onClick={() => open('backup', j.id)}>
               <span className="archive-name">{j.name}</span>
@@ -221,7 +229,7 @@ function ArchivesTile({ s }: { s: Snapshot }) {
             </RowButton>
           </li>
         ))}
-        {b.files.map((f) => (
+        {b?.files.map((f) => (
           <li key={f.name}>
             <RowButton onClick={() => open('files', f.name)}>
               <span className="archive-name">{f.name}</span>
@@ -236,6 +244,16 @@ function ArchivesTile({ s }: { s: Snapshot }) {
           <span className="small muted">{store.name}</span>
           <Num value={store.aws?.bytes ?? store.duplicati_bytes} format={(v) => bytes(v)} className="tile-big" />
           {store.aws?.growth_30d != null && <span className="small muted">+{bytes(store.aws.growth_30d)} in 30 days</span>}
+        </RowButton>
+      )}
+      {lib && (
+        <RowButton className="tile-storage" onClick={() => open('photos')}>
+          <span className="small muted">Photo library</span>
+          <Num value={lib.bytes} format={(v) => bytes(v)} className="tile-big" />
+          <span className="small muted">
+            {(lib.photos + lib.videos).toLocaleString()} items
+            {s.photos?.added_7d ? ` · ${s.photos.added_7d.toLocaleString()} added this week` : ''}
+          </span>
         </RowButton>
       )}
     </Tile>

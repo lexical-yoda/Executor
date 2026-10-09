@@ -8,6 +8,7 @@ import { BackupJobDrawer, FileBackupDrawer, StorageDrawer } from './Backups'
 import { BandwidthDrawer, CertificateDrawer } from './Edge'
 import { FeedDrawer } from './Feed'
 import { DownloadDrawer, PlaceDrawer, RequestDrawer, RouteDrawer, StreamDrawer, UserDrawer } from './MediaDrawers'
+import { PhotosDrawer } from './Photos'
 import { RecapDrawer } from './Recap'
 import { ContainerDrawer, ServiceDrawer } from './ServiceDrawer'
 import { Empty, RowButton } from './ui'
@@ -70,6 +71,8 @@ function content(d: DrawerRef): ReactNode {
       return <FileBackupDrawer name={d.id} />
     case 'storage':
       return <StorageDrawer name={d.id} />
+    case 'photos':
+      return <PhotosDrawer />
     case 'action':
       return <ActionDrawer id={d.id} />
     case 'run':

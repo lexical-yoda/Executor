@@ -4,6 +4,7 @@ import {
   Box,
   Cpu,
   Download,
+  Images,
   Inbox,
   Loader2,
   Play,
@@ -29,6 +30,7 @@ const ICONS: Record<string, typeof Activity> = {
   request: Inbox,
   action: Zap,
   certificate: ShieldCheck,
+  photos: Images,
   system: Power,
 }
 

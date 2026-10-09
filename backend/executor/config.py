@@ -234,6 +234,14 @@ class MediaIntegration(BaseModel):
     requests_interval: float = 60
 
 
+class ImmichIntegration(BaseModel):
+    # Server URL as seen from the web container. The API key comes from the
+    # environment (IMMICH_API_KEY), never from this file.
+    url: str
+    timeout: float = 8.0
+    interval: float = 300
+
+
 class Discovery(BaseModel):
     # Stacks found from Docker itself (compose labels) and the runner's stacks
     # folder. A stack none of whose containers a configured service lists
@@ -259,6 +267,7 @@ class Integrations(BaseModel):
     jellyfin: JellyfinIntegration | None = None
     backups: BackupsIntegration | None = None
     media: MediaIntegration | None = None
+    immich: ImmichIntegration | None = None
 
 
 class Config(BaseModel):

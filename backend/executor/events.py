@@ -72,6 +72,9 @@ class Tracker:
         self.requests_seen: set[int] | None = None
         self.runs_seen: dict[str, str] | None = None
         self.certs_seen: dict[str, float] | None = None
+        self.photos_seen: dict | None = None
+        # Library counts when the current burst of uploads (or deletions) began.
+        self._photo_burst: dict | None = None
 
     # --- output --------------------------------------------------------------
     def emit(self, kind: str, level: str, title: str, detail: str | None = None, actor: str | None = None,
@@ -266,6 +269,50 @@ class Tracker:
             title = f"{r['title']} ({r['year']})" if r.get("year") else r["title"]
             self.emit("request", "info", f"requested {title}", "TV" if r.get("kind") == "tv" else "Movie",
                       actor=r.get("requested_by"), ref=f"request:{rid}", when=now)
+
+    def photos(self, status: dict, now: float | None = None) -> None:
+        """Photo library changes, a release to update to, and jobs that failed."""
+        now = now or time.time()
+        current = {k: status[k] for k in ("photos", "videos", "bytes")}
+        before = self.photos_seen
+        self.photos_seen = {**current, "latest": status.get("latest") if status.get("update") else None,
+                            "failed": status.get("failed")}
+        if before is None:
+            return
+        # A phone backing up sends a burst over several polls: one event once the counts settle.
+        if any(current[k] != before[k] for k in ("photos", "videos")):
+            if self._photo_burst is None:
+                self._photo_burst = {k: before[k] for k in current}
+        elif self._photo_burst is not None:
+            start, self._photo_burst = self._photo_burst, None
+            self._library_change(start, current, now)
+        latest = self.photos_seen["latest"]
+        if latest and latest != before.get("latest"):
+            self.emit("photos", "info", f"Immich {latest} is available", f"Running {status.get('version')}",
+                      ref="photos", when=now)
+        failed, failed_before = status.get("failed"), before.get("failed")
+        if failed is not None and failed_before is not None and failed > failed_before:
+            queues = [j["label"] for j in status.get("jobs") or [] if j["failed"]]
+            count = failed - failed_before
+            self.emit("photos", "warn", f"{count} Immich {'job' if count == 1 else 'jobs'} failed",
+                      ", ".join(queues) or None, ref="photos", when=now)
+
+    def _library_change(self, start: dict, end: dict, now: float) -> None:
+        photos, videos = end["photos"] - start["photos"], end["videos"] - start["videos"]
+        parts = [f"{abs(n)} {word if abs(n) == 1 else word + 's'}"
+                 for n, word in ((photos, "photo"), (videos, "video")) if n]
+        if not parts:
+            return
+        if photos >= 0 and videos >= 0:
+            title = f"Added {' and '.join(parts)} to Immich"
+        elif photos <= 0 and videos <= 0:
+            title = f"Removed {' and '.join(parts)} from Immich"
+        else:
+            title = "Immich library changed: " + ", ".join(
+                f"{'+' if n > 0 else '−'}{p}" for n, p in zip([n for n in (photos, videos) if n], parts))
+        grown = end["bytes"] - start["bytes"]
+        detail = f"{'+' if grown >= 0 else '−'}{_size(abs(grown))} · {_size(end['bytes'])} in total"
+        self.emit("photos", "info", title, detail, ref="photos", when=now)
 
     # --- actions and certificates -------------------------------------------
     def runs(self, runs: list[dict], now: float | None = None) -> None:

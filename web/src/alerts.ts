@@ -172,6 +172,17 @@ export function collectAlerts(s: Snapshot | null): Alert[] {
       })
     }
   }
+  const p = s.photos
+  if (p && (!p.configured || p.error)) {
+    add({
+      key: 'immich',
+      level: 'warn',
+      deck: 'archives',
+      title: 'Photo library figures unavailable',
+      detail: p.configured ? p.error : 'IMMICH_API_KEY is not set',
+      ref: { kind: 'photos', id: '' },
+    })
+  }
   if (s.jellyfin && !s.jellyfin.ok) {
     add({
       key: 'jellyfin',

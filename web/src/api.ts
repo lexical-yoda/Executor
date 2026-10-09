@@ -137,6 +137,58 @@ export interface Snapshot {
   backups: Backups | null
   media: Media | null
   jellyfin: JellyfinStatus | null
+  /** The Immich photo library, when configured. */
+  photos?: Photos | null
+}
+
+export interface DayCount {
+  date: string
+  count: number
+}
+
+export interface PhotoJob {
+  name: string
+  label: string
+  paused: boolean
+  active: number
+  waiting: number
+  delayed: number
+  failed: number
+}
+
+export interface PhotoLibrary {
+  photos: number
+  videos: number
+  bytes: number
+  photo_bytes: number
+  video_bytes: number
+  users: { name: string; photos: number; videos: number; bytes: number; quota: number | null }[]
+  disk: { size: number | null; used: number | null; free: number | null; pct: number | null } | null
+  version: string | null
+  latest: string | null
+  update: boolean
+  jobs: PhotoJob[] | null
+  backlog: number | null
+  failed: number | null
+}
+
+export interface Photos {
+  configured: boolean
+  ok: boolean
+  error: string | null
+  checked_at: number | null
+  library: PhotoLibrary | null
+  /** Uploads per day, the last 30 days. */
+  recent: DayCount[]
+  added_7d: number | null
+  added_30d: number | null
+  growth: { tracked_since: string; d7: number | null; d30: number | null } | null
+}
+
+export interface PhotoHistory {
+  upload: DayCount[] | null
+  taken: DayCount[] | null
+  size: { date: string; bytes: number; photos: number | null; videos: number | null }[]
 }
 
 export interface Bandwidth {
@@ -548,6 +600,7 @@ export interface Recap {
   backups: { succeeded: number; failed: number; warnings: number; glacier_growth: number | null }
   actions: { succeeded: number; failed: number }
   machines: Record<string, Record<string, number | null>>
+  photos?: { added: number | null; added_before: number | null; bytes_growth: number | null; total_bytes: number } | null
 }
 
 export interface Tileset {
@@ -603,6 +656,7 @@ export const api = {
     request<ServiceHistory>(`/api/services/${encodeURIComponent(id)}/history?hours=${hours}`),
   recap: (days = 7) => request<Recap>(`/api/recap?days=${days}`),
   tilesets: () => request<{ tilesets: Tileset[] }>('/api/map/tilesets'),
+  photoHistory: () => request<PhotoHistory>('/api/photos/history'),
   run: (id: string, offset: number) => request<RunDetail>(`/api/runs/${id}?offset=${offset}`),
   settingsServices: () =>
     request<{ services: SettingsService[]; groups: string[]; default_group: string | null }>('/api/settings/services'),

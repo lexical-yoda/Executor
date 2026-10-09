@@ -6,7 +6,7 @@ import asyncio
 import json
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import httpx
 
@@ -20,6 +20,7 @@ from .sources.backups import evaluate_files
 from .sources.beszel import Beszel, summarize, to_series
 from .sources.duplicati import Duplicati
 from .sources.edge import check_certificate, fetch_bandwidth
+from .sources.immich import Immich
 from .sources.media import MediaSources
 from .store import Store
 
@@ -38,6 +39,13 @@ def hourly_sample(stats: dict) -> dict:
               "gpu": gpu.get("util_pct"), "gpu_temp": stats.get("gpu_temp"),
               "pools": {p["name"]: p["pct"] for p in stats.get("pools") or [] if p.get("pct") is not None}}
     return {k: v for k, v in values.items() if v is not None}
+
+
+def grown_since(series: list[dict], today: date, days: int) -> int | None:
+    """Bytes added since ``days`` ago, from daily readings; None if they do not reach back that far."""
+    target = (today - timedelta(days=days)).isoformat()
+    earlier = [p for p in series if p["date"] <= target]
+    return int(series[-1]["bytes"] - earlier[-1]["bytes"]) if earlier else None
 
 
 class RunnerClient:
@@ -103,7 +111,8 @@ class Monitor:
     def __init__(self, config: Config, runner: RunnerClient | None,
                  beszel: Beszel | None = None, duplicati: Duplicati | None = None,
                  media: MediaSources | None = None, cloudwatch: CloudWatchS3 | None = None,
-                 history: MediaHistory | None = None, store: Store | None = None) -> None:
+                 history: MediaHistory | None = None, store: Store | None = None,
+                 immich: Immich | None = None) -> None:
         self.config = config
         self.history = history
         self.store = store
@@ -147,6 +156,17 @@ class Monitor:
         self.queue_errors: dict[str, str] = {}
         self.torrents: dict | None = None
         self.torrents_error: str | None = None
+        self.immich = immich
+        self.immich_settings = config.integrations.immich
+        self.photos: dict | None = None
+        self.photos_error: str | None = None if immich else "IMMICH_API_KEY not set"
+        self.photos_checked: float | None = None
+        # Assets per day over the last year ("upload" and "taken"), refreshed hourly
+        # or when the library changes, and the library size over time.
+        self.photo_activity: dict[str, list[dict]] = {}
+        self._activity_checked = float("-inf")
+        self._activity_counts: tuple[int, int] | None = None
+        self.photo_growth: dict | None = None
         self.runner = runner
         self.beszel = beszel
         self.duplicati = duplicati
@@ -191,6 +211,8 @@ class Monitor:
                     self._loop(self.poll_storage, self.backup_settings.storage_interval)))
         if self.media and self.media_settings:
             self._tasks.append(asyncio.create_task(self._loop(self.poll_media, self.media_settings.interval)))
+        if self.immich and self.immich_settings:
+            self._tasks.append(asyncio.create_task(self._loop(self.poll_immich, self.immich_settings.interval)))
         if self.history:
             self._tasks += [
                 asyncio.create_task(self._loop(self.poll_watching, 30)),
@@ -221,6 +243,8 @@ class Monitor:
             await self.media.close()
         if self.cloudwatch:
             await self.cloudwatch.close()
+        if self.immich:
+            await self.immich.close()
 
     @staticmethod
     async def _loop(func, interval: float) -> None:
@@ -621,6 +645,98 @@ class Monitor:
             })
         return result
 
+    async def poll_immich(self) -> None:
+        assert self.immich is not None
+        try:
+            self.photos = await self.immich.status()
+            self.photos_error = None
+        except Exception as exc:  # noqa: BLE001
+            log.warning("immich failed: %s", exc)
+            self.photos_error = self._reason(exc)
+            return
+        self.photos_checked = time.time()
+        self.tracker.photos(self.photos)
+        counts = (self.photos["photos"], self.photos["videos"])
+        if time.monotonic() - self._activity_checked > 3600 or counts != self._activity_counts:
+            self._activity_checked, self._activity_counts = time.monotonic(), counts
+            for kind in ("Upload", "Taken"):
+                try:
+                    series = await self.immich.activity(kind, date.today())
+                except Exception as exc:  # noqa: BLE001 - the counts above still stand
+                    log.warning("immich %s activity failed: %s", kind.lower(), exc)
+                    continue
+                if series is not None:
+                    self.photo_activity[kind.lower()] = series
+        if self.store:
+            today = date.today().isoformat()
+            for key in ("bytes", "photos", "videos"):
+                self._safely(self.store.set_daily, today, f"immich_{key}", self.photos[key])
+            try:
+                self.photo_growth = self._growth(date.today())
+            except Exception as exc:  # noqa: BLE001
+                log.warning("photo library growth failed: %s", exc)
+
+    def _library_series(self, first_day: str) -> list[dict]:
+        assert self.store is not None
+        columns = {k: dict(self.store.daily_series(f"immich_{k}", first_day)) for k in ("bytes", "photos", "videos")}
+        return [{"date": day, "bytes": size, "photos": columns["photos"].get(day), "videos": columns["videos"].get(day)}
+                for day, size in sorted(columns["bytes"].items())]
+
+    def _growth(self, today: date) -> dict | None:
+        """Library growth over 7 and 30 days, from Executor's daily readings."""
+        series = self._library_series((today - timedelta(days=400)).isoformat())
+        if not series:
+            return None
+        return {"tracked_since": series[0]["date"], "d7": grown_since(series, today, 7),
+                "d30": grown_since(series, today, 30)}
+
+    def photos_recap(self, days: int, today: date | None = None) -> dict | None:
+        """Uploads in the last ``days`` days against the days before, for the recap."""
+        if not self.immich_settings or self.photos is None:
+            return None
+        today = today or date.today()
+        uploads = {p["date"]: p["count"] for p in self.photo_activity.get("upload") or []}
+        start, previous = today - timedelta(days=days - 1), today - timedelta(days=2 * days - 1)
+
+        def total(first: date, last: date) -> int:
+            return sum(n for d, n in uploads.items() if first.isoformat() <= d <= last.isoformat())
+
+        growth = None
+        if self.store:
+            growth = grown_since(self._library_series((today - timedelta(days=days + 7)).isoformat()), today, days)
+        return {
+            "added": total(start, today) if uploads else None,
+            "added_before": total(previous, start - timedelta(days=1)) if uploads else None,
+            "bytes_growth": growth,
+            "total_bytes": self.photos["bytes"],
+        }
+
+    def photo_history(self) -> dict:
+        """The year of activity and the library size over time, for the photos drawer."""
+        first = (date.today() - timedelta(days=400)).isoformat()
+        return {
+            "upload": self.photo_activity.get("upload"),
+            "taken": self.photo_activity.get("taken"),
+            "size": self._library_series(first) if self.store else [],
+        }
+
+    def _photos(self) -> dict | None:
+        if not self.immich_settings:
+            return None
+        recent = (self.photo_activity.get("upload") or [])[-30:]
+        uploads = [p["count"] for p in self.photo_activity.get("upload") or []]
+        return {
+            "configured": self.immich is not None,
+            "ok": self.photos_error is None and self.photos is not None,
+            "error": self.photos_error,
+            "checked_at": self.photos_checked,
+            "library": self.photos,
+            "recent": recent,
+            "added_7d": sum(uploads[-7:]) if uploads else None,
+            "added_30d": sum(uploads[-30:]) if uploads else None,
+            "growth": self.photo_growth,
+        }
+
     def _backups(self) -> dict | None:
         if not self.backup_settings:
             return None
@@ -795,4 +911,5 @@ class Monitor:
             "backups": self._backups(),
             "media": self._media(),
             "jellyfin": self._jellyfin(),
+            "photos": self._photos(),
         }

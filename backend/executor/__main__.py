@@ -82,6 +82,14 @@ def main() -> None:
                                         env["QBITTORRENT_PASSWORD"], m.qbittorrent.timeout)
                 if m.qbittorrent and not missing("QBITTORRENT_USERNAME", "QBITTORRENT_PASSWORD") else None,
             )
+        immich = None
+        settings_immich = config.integrations.immich
+        if settings_immich and os.environ.get("IMMICH_API_KEY"):
+            from .sources.immich import Immich
+
+            immich = Immich(settings_immich.url, os.environ["IMMICH_API_KEY"], timeout=settings_immich.timeout)
+        elif settings_immich:
+            logging.getLogger("executor").warning("Immich configured but IMMICH_API_KEY not set")
         cloudwatch = None
         if backups and backups.storage:
             if os.environ.get("AWS_ACCESS_KEY_ID") and os.environ.get("AWS_SECRET_ACCESS_KEY"):
@@ -131,7 +139,7 @@ def main() -> None:
         tiles = Path(os.environ.get("EXECUTOR_TILES", "/tiles"))
         app = create_web_app(config, runner, static, beszel=beszel, jellyfin=jellyfin, duplicati=duplicati,
                              media=media, cloudwatch=cloudwatch, history=history, store=ledger,
-                             tiles_dir=tiles if tiles.is_dir() else None)
+                             tiles_dir=tiles if tiles.is_dir() else None, immich=immich)
         uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "1977")), **common)
 
     elif role == "runner":

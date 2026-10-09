@@ -469,10 +469,20 @@ class Store:
             self._db.execute("INSERT INTO daily (day, key, value) VALUES (?, ?, ?) "
                              "ON CONFLICT (day, key) DO UPDATE SET value = value + excluded.value", (day, key, value))
 
+    def set_daily(self, day: str, key: str, value: float) -> None:
+        """Keep the day's latest reading (a level, such as a library size, rather than a count)."""
+        with self._lock:
+            self._db.execute("INSERT INTO daily (day, key, value) VALUES (?, ?, ?) "
+                             "ON CONFLICT (day, key) DO UPDATE SET value = excluded.value", (day, key, value))
+
     def daily_sum(self, key: str, first_day: str, last_day: str) -> float:
         row = self._db.execute("SELECT SUM(value) FROM daily WHERE key = ? AND day >= ? AND day <= ?",
                                (key, first_day, last_day)).fetchone()
         return row[0] or 0.0
+
+    def daily_series(self, key: str, first_day: str) -> list[tuple[str, float]]:
+        return [(r[0], r[1]) for r in self._db.execute(
+            "SELECT day, value FROM daily WHERE key = ? AND day >= ? ORDER BY day", (key, first_day))]
 
     # --- upkeep --------------------------------------------------------------
     def purge_ledger(self, now: float | None = None) -> None:

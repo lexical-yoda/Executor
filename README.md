@@ -37,7 +37,7 @@ Five decks, switched by tabs (a bottom bar on phones) or the keys 1 to 5:
 | Bridge | The map with live streams, and tiles summarising every other deck, the event log and the weekly recap |
 | Engineering | Machines, the edge (bandwidth and certificates) and services |
 | Holonet | The map explorer, now playing, requests, downloads, places and viewers |
-| Archives | Backup jobs, file backups and off-site storage |
+| Archives | The photo library, backup jobs, file backups and off-site storage |
 | Armory | Every action, grouped, and the recent runs |
 
 A status line and a row of alerts stay at the top on every deck. Every card,
@@ -153,6 +153,26 @@ All read-only. Keys come from `JELLYSEERR_API_KEY`, `SONARR_API_KEY`,
 one out and that part is skipped. qBittorrent bans an address after repeated
 failed logins, so check its password before deploying.
 
+### Photo library (optional, via Immich)
+
+A card on the Archives deck with the library's size (photos against videos),
+how many items it holds, uploads per day for the last month, free space on the
+library disk, Immich's background jobs (thumbnails, face detection, smart
+search and the rest, with anything queued, paused or failed) and whether a
+newer Immich release is out. Its drawer adds a year of activity as a calendar
+heatmap, by the day items were added or the day they were taken, storage per
+person, and the library size over time. New uploads (one event per burst, once
+the counts settle), failed jobs and new releases go to the event log, and the
+weekly recap counts the photos added.
+
+Create an API key in Immich while logged in as an admin (Account Settings >
+API Keys) with only `server.statistics`, `server.storage`,
+`server.versionCheck`, `queue.read` and `user.read`, and put it in
+`IMMICH_API_KEY`. Statistics and job queues are admin-only in Immich; daily
+activity covers the key owner's own account. Anything the key may not read is
+left out rather than failing the card. Executor records the library size once
+a day, so the growth figures fill in from the first day it runs.
+
 ### Now playing and location history (optional)
 
 With the `jellyfin` integration, the Holonet deck shows who is watching
@@ -225,7 +245,8 @@ one SQLite file:
 
 - **Event log:** services and machines going down and recovering, containers
   stopping or restarting, backups finishing, downloads grabbed and finished,
-  new requests, streams starting, actions run and certificates renewed. A
+  new requests, streams starting, actions run, certificates renewed, photos
+  added to the library and Immich jobs failing. A
   service change counts once it holds for two checks. Kept 180 days.
 - **Uptime:** every service check in five-minute buckets, shown as uptime bars
   in each service's details. Kept 35 days.
@@ -236,6 +257,8 @@ one SQLite file:
   activity log, and the bytes qBittorrent downloads each day, for the
   weekly recap (hours streamed, top titles, viewers and cities, downloads,
   uptime, incidents and Glacier growth, against the week before).
+- **Photo library size:** one reading a day of the Immich library's size and
+  counts, for its growth chart. Kept 400 days.
 
 Without the folder the event log is kept in memory only, and the recap,
 uptime bars and long ranges are unavailable.
@@ -446,4 +469,5 @@ Tests: `cd backend && ../.venv/bin/python -m pytest -q`. Tests that check a real
    self-hosted vector map, hold-to-launch actions with a live pipeline, the
    event log, uptime history, a year of machine history, the weekly recap and
    the demo tour (done); stack discovery, so the service list follows the
-   stacks that actually run (done).
+   stacks that actually run (done); the settings page (done); the Immich photo
+   library (done).
