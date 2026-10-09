@@ -302,3 +302,17 @@ def test_sessions_from_the_servers_own_address_are_home(tmp_path, monkeypatch):
     # Relocating history leaves home sightings alone.
     store.relocate("8.8.4.4", "alice", None, {**PLACES["198.51.100.7"], "source": "dbip"})
     assert store.trail(ALICE, now - 86400)[0]["city"] == "Home"
+
+
+def test_a_vague_answer_gives_way_to_a_city_inside_it():
+    near = {"203.0.113.10": {"city": "Kochi", "lat": 9.93, "lon": 76.27}}
+    far = {"203.0.113.10": {"city": "Delhi", "lat": 28.6, "lon": 77.2}}
+
+    class Vague(FakeSource):
+        def lookup(self, ip):
+            return {"city": "Bengaluru", "lat": 12.97, "lon": 77.59, "radius_km": 500, "source": "geolite2"}
+
+    inside = Locator([Vague(name="geolite2"), FakeSource(near, name="dbip")]).locate("203.0.113.10")
+    assert inside["city"] == "Kochi" and inside["within"] == {"source": "geolite2", "km": 500}
+    outside = Locator([Vague(name="geolite2"), FakeSource(far, name="dbip")]).locate("203.0.113.10")
+    assert outside["city"] == "Bengaluru"

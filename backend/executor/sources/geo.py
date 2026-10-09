@@ -25,6 +25,7 @@ import hashlib
 import ipaddress
 import json
 import logging
+import math
 import os
 import shutil
 import tarfile
@@ -36,6 +37,18 @@ import httpx
 import maxminddb
 
 log = logging.getLogger("executor.geo")
+
+# Bump when the way answers are chosen changes, so history is located again.
+RULES = "2"
+# A GeoLite2 answer this vague (km) is an area, not a city: a city another
+# database names inside that area is the better guess.
+VAGUE_KM = 200
+
+
+def distance_km(a: dict, b: dict) -> float:
+    lat1, lon1, lat2, lon2 = map(math.radians, (a["lat"], a["lon"], b["lat"], b["lon"]))
+    h = math.sin((lat2 - lat1) / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin((lon2 - lon1) / 2) ** 2
+    return 6371 * 2 * math.asin(math.sqrt(h))
 
 
 def public_ip(value: str | None) -> str | None:
@@ -287,7 +300,7 @@ class Locator:
     def signature(self) -> str:
         """Changes whenever a different answer could come out, so history can be relocated."""
         parts = [f"{s.name}:{s.version if s.ready else '-'}" for s in self.sources]
-        return "|".join(parts + [self.corrections.signature])
+        return "|".join(parts + [self.corrections.signature, RULES])
 
     async def ensure(self) -> None:
         for source in self.sources:
@@ -300,16 +313,21 @@ class Locator:
         fixed = self.corrections.match(address, user, device)
         if fixed:
             return fixed
-        for source in self.sources:
-            if source.ready:
-                place = source.lookup(ip)
-                if place:
-                    return place
-        return None
+        answers = [a for a in (s.lookup(ip) for s in self.sources if s.ready) if a]
+        if not answers:
+            return None
+        best = answers[0]
+        radius = best.get("radius_km")
+        if radius and radius >= VAGUE_KM:
+            # The first database only knows the area; take a city another one places inside it.
+            for other in answers[1:]:
+                if other.get("city") and distance_km(best, other) <= radius:
+                    return {**other, "radius_km": None, "within": {"source": best["source"], "km": radius}}
+        return best
 
     def second_opinion(self, ip: str | None, primary: dict | None) -> dict | None:
         """Another database's answer, when it names a different city."""
-        if not primary:
+        if not primary or primary.get("source") in ("home", "correction"):
             return None
         for source in self.sources:
             if source.ready and source.name != primary.get("source"):
