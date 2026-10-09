@@ -14,7 +14,7 @@ One Docker image runs in two roles, as two containers in one stack:
 | Container | Role | Can reach |
 |---|---|---|
 | `executor` | Serves the page and `/api`, probes services and machines | The Docker host, the network, the runner |
-| `executor-runner` | Executes actions; the only container holding the Docker socket | The Docker socket, and `executor` over an internal network |
+| `executor-runner` | Executes actions; the only container holding the Docker socket | The Docker socket, `executor` over an internal network, and outbound connections for ssh and http steps |
 
 - **Backend:** Python, FastAPI and uvicorn, in `backend/executor/`.
 - **Frontend:** React and TypeScript built with Vite, in `web/`. The build is
@@ -75,11 +75,58 @@ credits (instance credits accruing hourly plus the free monthly credits).
 
 ### Actions
 
-An action is an ordered list of steps in `actions.yaml`. A step is either `run`
-(an argument list, never a shell string) or `wait_healthy` (a container name).
-The runner stops at the first failure and skips the rest. Only one action runs
-at a time. Every run, with its full output, is appended to `runs.jsonl` in the
-runner's data directory and listed under "Recent runs".
+An action is an ordered list of steps in `actions.yaml`. A step is exactly one
+of:
+
+| Step | Does |
+|---|---|
+| `run` | Runs an argument list (never a shell string) in the runner |
+| `wait_healthy` | Waits until Docker reports a container healthy |
+| `ssh` | Runs a named command on an SSH target (see below) |
+| `http` | Makes an API call; `${NAME}` in the URL and header values is filled from the runner's environment and never logged |
+
+The runner stops at the first failure and skips the rest. `retry_every`
+repeats a failing `run`, `ssh` or `http` step until its timeout, which is how
+an action waits for something, such as a host coming back after a reboot.
+Only one action runs at a time. Every run, with its full output, is appended
+to `runs.jsonl` in the runner's data directory and listed under "Recent runs".
+
+An action with `show_streams: true` lists the media server's active streams
+in its confirm dialog, so you can see who would be interrupted. This needs the
+`jellyfin` integration in `config.yaml` and `JELLYFIN_API_KEY` in `.env`.
+
+Variables that `http` steps read are removed from the environment of every
+command the runner starts, like `RUNNER_TOKEN`.
+
+#### SSH steps
+
+An `ssh` step names a target from the `ssh:` section of `actions.yaml` and a
+command, which must be a plain word such as `nginx-reload`. The runner uses
+the key and `known_hosts` in `$EXECUTOR_DIR/ssh/` (mounted read-only at
+`/ssh`), with strict host key checking and no SSH config file.
+
+The command name is not trusted on the remote side. Give the key its own
+account there and lock it to a dispatcher in that account's
+`authorized_keys`:
+
+```
+restrict,from="<executor host>",command="/usr/local/bin/executor-dispatch" ssh-ed25519 AAAA... executor-runner
+```
+
+`restrict` turns off forwarding and terminals, `from=` accepts the key only
+from the Executor host, and `command=` replaces whatever the client asked for
+with the dispatcher, which receives the requested name in
+`SSH_ORIGINAL_COMMAND`. The dispatcher accepts only a fixed list of names. For
+anything privileged, it calls a root-owned helper through `sudo`, with a
+sudoers rule that allows that helper with exactly those arguments. Make the
+account's home and `.ssh` directory root-owned, so the account cannot change
+its own key options.
+
+A long job, such as a system upgrade followed by a reboot, should be started
+by the dispatcher in its own unit (for example with `systemd-run`), so it
+survives the SSH session ending. A second dispatcher command can then follow
+its log, and a third can report whether the host has rebooted since, for a
+step with `retry_every`.
 
 ## Security model
 
@@ -98,9 +145,15 @@ an allowed browser.
   `X-Executor: 1` and `Content-Type: application/json`, and is refused if its
   `Origin` or `Sec-Fetch-Site` points elsewhere. A cross-site page cannot set
   that header without a CORS preflight, and the server answers no preflights.
-- **Docker socket isolation.** Only the runner holds the socket. It sits on an
-  internal-only network and requires a shared bearer token (`RUNNER_TOKEN`),
-  which is stripped from the environment of every command it runs.
+- **Docker socket isolation.** Only the runner holds the socket. The web
+  container reaches it only over an internal network, it publishes no port, and
+  every request needs a shared bearer token (`RUNNER_TOKEN`), which is
+  stripped from the environment of every command it runs. The runner also has
+  a network of its own for the outbound connections of `ssh` and `http` steps; holding the
+  Docker socket, it could reach the network through a new container anyway.
+- **Remote hosts trust names, not commands.** An `ssh` step's key should work
+  only from the Executor host and only through a dispatcher that accepts a
+  fixed list of names (see "SSH steps").
 - **Hardened web container.** Non-root user, read-only filesystem, all
   capabilities dropped, `no-new-privileges`, and a strict Content Security
   Policy.
@@ -125,6 +178,9 @@ The image is built by GitHub Actions on every push to `main` and published to
    output of `openssl rand -hex 32`, set the paths, and `chmod 600 .env`.
 3. Copy the two example configs into `config/` as `config.yaml` and
    `actions.yaml`, and describe your own network, services and actions.
+   For `ssh` steps, create `ssh/` beside them with a key pair
+   (`ssh-keygen -t ed25519 -N "" -f ssh/id_ed25519`) and a `known_hosts` file
+   holding each target's host key, checked against the target itself.
 4. Run `docker compose up -d` in that directory, or deploy it with your stack
    manager.
 5. Open `http://<allowed host>:1977` from an allowed device.
@@ -156,7 +212,8 @@ Tests: `cd backend && ../.venv/bin/python -m pytest -q`. Tests that check a real
 
 1. **Phase 1:** status for every service and machine, and one-click actions.
 2. **Phase 2 (in progress):** machine stats and history from Beszel (done);
-   bandwidth and certificate expiry (done); media panels, backups panel, and
-   more actions, including a VPS update and reboot.
+   bandwidth and certificate expiry (done); more actions, with ssh and http
+   steps and an active-stream warning (done); media panels and a backups
+   panel.
 3. **Phase 3:** a media section: now playing, active users, a globe of login
    locations, and per-user location history.

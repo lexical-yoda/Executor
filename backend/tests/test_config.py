@@ -65,3 +65,28 @@ def test_unknown_icon_rejected():
             "machines": [{"id": "m", "name": "M", "role": "r", "icon": "toaster"}],
             "services": [],
         })
+
+
+def test_step_with_two_kinds_rejected():
+    with pytest.raises(ValidationError):
+        ActionsConfig.model_validate({"actions": [{"id": "x", "title": "x", "confirm": "x", "steps": [
+            {"name": "both", "run": ["true"], "http": {"url": "http://example.com"}}]}]})
+
+
+def test_ssh_step_needs_a_known_target_and_a_plain_command():
+    step = {"name": "s", "ssh": {"target": "vps", "command": "nginx-reload"}}
+    with pytest.raises(ValidationError):
+        ActionsConfig.model_validate({"actions": [{"id": "x", "title": "x", "confirm": "x", "steps": [step]}]})
+    with pytest.raises(ValidationError):
+        ActionsConfig.model_validate({
+            "ssh": {"vps": {"host": "10.8.0.1", "user": "executor"}},
+            "actions": [{"id": "x", "title": "x", "confirm": "x", "steps": [
+                {"name": "s", "ssh": {"target": "vps", "command": "rm -rf /"}}]}],
+        })
+
+
+def test_secret_names_come_from_http_steps():
+    actions = ActionsConfig.model_validate({"actions": [{"id": "x", "title": "x", "confirm": "x", "steps": [
+        {"name": "h", "http": {"url": "http://example.com/?k=${URL_KEY}",
+                               "headers": {"Authorization": "Token ${HEADER_KEY}"}}}]}]})
+    assert actions.secret_names() == {"URL_KEY", "HEADER_KEY"}

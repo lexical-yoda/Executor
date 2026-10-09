@@ -17,6 +17,8 @@ read the git-ignored `PLAN.local.md` (plan, decisions, state and history) and
   without being asked.
 - **Commands live only in `actions.yaml`, read only by the runner.** Never add an
   endpoint that accepts a command, a shell string, or a path from a request.
+  `ssh` steps send only a command name; the remote side's forced-command
+  dispatcher decides what it means.
 - **Only the runner touches the Docker socket.** The web container stays
   non-root, read-only and capability-free.
 - **Every non-GET request must pass the guard in `backend/executor/security.py`.**

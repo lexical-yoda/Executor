@@ -1,6 +1,14 @@
-import { AlertTriangle, Check, CircleDashed, Loader2, Minus, Play, TerminalSquare, X } from 'lucide-react'
+import { AlertTriangle, Check, CircleDashed, Loader2, Minus, Pause, Play, TerminalSquare, Tv, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { api, ApiError, type ActionInfo, type RunDetail, type RunSummary, type StepStatus } from '../api'
+import {
+  api,
+  ApiError,
+  type ActionInfo,
+  type RunDetail,
+  type RunSummary,
+  type StepStatus,
+  type Streams,
+} from '../api'
 import { ago } from '../format'
 import { Modal } from './Modal'
 
@@ -17,6 +25,61 @@ function StepIcon({ status }: { status: StepStatus }) {
     default:
       return <CircleDashed size={15} aria-label="pending" />
   }
+}
+
+function ActiveStreams() {
+  const [data, setData] = useState<Streams | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let stopped = false
+    api
+      .streams()
+      .then((d) => !stopped && setData(d))
+      .catch((err) => !stopped && setError(err instanceof Error ? err.message : String(err)))
+    return () => {
+      stopped = true
+    }
+  }, [])
+
+  if (error || (data && data.configured && !data.ok)) {
+    return <p className="streams-note warn">Could not check for active streams: {error ?? data?.error}</p>
+  }
+  if (!data) {
+    return (
+      <p className="streams-note muted">
+        <Loader2 size={13} className="spin" /> Checking for active streams…
+      </p>
+    )
+  }
+  if (!data.configured) return null
+  if (!data.streams.length) {
+    return (
+      <p className="streams-note ok">
+        <Tv size={14} /> No one is watching right now.
+      </p>
+    )
+  }
+  const n = data.streams.length
+  return (
+    <div className="streams">
+      <p className="streams-note warn">
+        <Tv size={14} /> {n} active {n === 1 ? 'stream' : 'streams'} will be interrupted:
+      </p>
+      <ul>
+        {data.streams.map((s, i) => (
+          <li key={`${s.user}-${i}`}>
+            <span className="stream-user">{s.user}</span>
+            <span className="stream-title">{s.title}</span>
+            <span className="stream-meta muted small">
+              {s.paused && <Pause size={11} aria-label="paused" />}
+              {[s.client, s.transcoding ? 'transcoding' : null].filter(Boolean).join(' · ')}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
 }
 
 function ConfirmDialog({
@@ -40,6 +103,7 @@ function ConfirmDialog({
       </div>
       <p>{action.description}</p>
       <p className="warn">{action.confirm}</p>
+      {action.show_streams && <ActiveStreams />}
       <ol className="plan">
         {action.steps.map((s) => (
           <li key={s}>{s}</li>

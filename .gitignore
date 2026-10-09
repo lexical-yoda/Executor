@@ -13,3 +13,6 @@ __pycache__/
 web/node_modules/
 web/dist/
 .DS_Store
+
+# Private: scripts installed on a real VPS (see PLAN.local.md).
+deploy/vps/

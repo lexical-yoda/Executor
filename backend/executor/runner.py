@@ -21,10 +21,11 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request
 from pydantic import BaseModel
 
-from .config import Action, ActionsConfig, Step
+from .config import ENV_REF, Action, ActionsConfig, Step
 from .docker_api import DockerAPI
 
 log = logging.getLogger("executor.runner")
@@ -85,10 +86,15 @@ class StartRequest(BaseModel):
 
 
 class Runner:
-    def __init__(self, actions: ActionsConfig, docker: DockerAPI, data_dir: Path | None) -> None:
+    def __init__(self, actions: ActionsConfig, docker: DockerAPI, data_dir: Path | None,
+                 http_transport: httpx.AsyncBaseTransport | None = None) -> None:
         self.actions = actions
         self.docker = docker
         self.data_dir = data_dir
+        self.http_transport = http_transport
+        # The runner token and every variable an http step reads stay out of
+        # child processes.
+        self.secret_env = SECRET_ENV | actions.secret_names()
         self.runs: dict[str, Run] = {}
         self.busy: str | None = None
         self._tasks: set[asyncio.Task] = set()
@@ -164,10 +170,10 @@ class Runner:
                 state.started_at = now()
                 run.say(f"==> {step.name}")
                 try:
-                    if step.run:
-                        await self._command(step, run)
-                    else:
+                    if step.wait_healthy:
                         await self._wait_healthy(step, run)
+                    else:
+                        await self._with_retry(step, run)
                 except Exception as exc:  # noqa: BLE001 - every failure must end the run cleanly
                     state.status = "failed"
                     state.finished_at = now()
@@ -188,13 +194,51 @@ class Runner:
             self._persist(run)
             log.info("run %s finished: %s", run.id, run.status)
 
-    async def _command(self, step: Step, run: Run) -> None:
-        env = {k: v for k, v in os.environ.items() if k not in SECRET_ENV}
+    async def _with_retry(self, step: Step, run: Run) -> None:
+        deadline = time.monotonic() + step.timeout
+        while True:
+            remaining = max(1.0, deadline - time.monotonic())
+            try:
+                await self._once(step, run, remaining)
+                return
+            except RuntimeError as exc:
+                wait = step.retry_every
+                if not wait or time.monotonic() + wait >= deadline:
+                    raise
+                run.say(f"   {exc}; retrying in {wait:.0f}s")
+                await asyncio.sleep(wait)
+
+    async def _once(self, step: Step, run: Run, timeout: float) -> None:
+        if step.run:
+            run.say("$ " + " ".join(step.run))
+            await self._command(step.run, step.cwd, run, timeout)
+        elif step.ssh:
+            target = self.actions.ssh[step.ssh.target]
+            run.say(f"$ ssh {target.user}@{target.host} {step.ssh.command}")
+            argv = [
+                "ssh", "-F", "/dev/null", "-T",
+                "-i", target.key, "-p", str(target.port),
+                "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes",
+                "-o", "StrictHostKeyChecking=yes", "-o", f"UserKnownHostsFile={target.known_hosts}",
+                "-o", "GlobalKnownHostsFile=/dev/null", "-o", "ConnectTimeout=10",
+                "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3", "-o", "LogLevel=ERROR",
+                f"{target.user}@{target.host}", step.ssh.command,
+            ]
+            code = await self._command(argv, None, run, timeout, check=False)
+            if code == 255:
+                raise RuntimeError("SSH connection failed (exit 255)")
+            if code != 0:
+                raise RuntimeError(f"exited with code {code}")
+        elif step.http:
+            await self._http(step, run, timeout)
+
+    async def _command(self, argv: list[str], cwd: str | None, run: Run, timeout: float,
+                       check: bool = True) -> int:
+        env = {k: v for k, v in os.environ.items() if k not in self.secret_env}
         env["NO_COLOR"] = "1"
-        run.say("$ " + " ".join(step.run or []))
         process = await asyncio.create_subprocess_exec(
-            *(step.run or []),
-            cwd=step.cwd,
+            *argv,
+            cwd=cwd,
             env=env,
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
@@ -207,13 +251,44 @@ class Runner:
                 run.say(chunk.decode("utf-8", errors="replace"))
 
         try:
-            await asyncio.wait_for(asyncio.gather(pump(), process.wait()), timeout=step.timeout)
+            await asyncio.wait_for(asyncio.gather(pump(), process.wait()), timeout=timeout)
         except asyncio.TimeoutError:
             process.kill()
             await process.wait()
-            raise RuntimeError(f"timed out after {step.timeout:.0f}s") from None
-        if process.returncode != 0:
-            raise RuntimeError(f"exited with code {process.returncode}")
+            raise RuntimeError(f"timed out after {timeout:.0f}s") from None
+        code = process.returncode or 0
+        if check and code != 0:
+            raise RuntimeError(f"exited with code {code}")
+        return code
+
+    async def _http(self, step: Step, run: Run, timeout: float) -> None:
+        call = step.http
+        assert call is not None
+
+        def fill(text: str) -> str:
+            def value(match: re.Match) -> str:
+                name = match.group(1)
+                if not os.environ.get(name):
+                    raise RuntimeError(f"{name} is not set in the runner's environment")
+                return os.environ[name]
+            return ENV_REF.sub(value, text)
+
+        url = fill(call.url)
+        headers = {key: fill(val) for key, val in call.headers.items()}
+        # Log the configured URL, so a secret in it is never printed.
+        run.say(f"$ {call.method} {call.url}")
+        try:
+            async with httpx.AsyncClient(timeout=min(timeout, 60), verify=call.verify_tls,
+                                         transport=self.http_transport) as client:
+                response = await client.request(call.method, url, headers=headers, json=call.json_body)
+        except httpx.HTTPError as exc:
+            raise RuntimeError(f"request failed: {exc.__class__.__name__}") from None
+        run.say(f"HTTP {response.status_code}")
+        if response.text.strip():
+            run.say(response.text[:2000])
+        ok = response.status_code in call.expect if call.expect else 200 <= response.status_code < 300
+        if not ok:
+            raise RuntimeError(f"unexpected HTTP {response.status_code}")
 
     async def _wait_healthy(self, step: Step, run: Run) -> None:
         name = step.wait_healthy or ""
@@ -231,8 +306,9 @@ class Runner:
             await asyncio.sleep(3)
 
 
-def create_runner_app(actions: ActionsConfig, token: str, docker: DockerAPI, data_dir: Path | None) -> FastAPI:
-    runner = Runner(actions, docker, data_dir)
+def create_runner_app(actions: ActionsConfig, token: str, docker: DockerAPI, data_dir: Path | None,
+                      http_transport: httpx.AsyncBaseTransport | None = None) -> FastAPI:
+    runner = Runner(actions, docker, data_dir, http_transport)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -270,6 +346,7 @@ def create_runner_app(actions: ActionsConfig, token: str, docker: DockerAPI, dat
                 "description": a.description,
                 "confirm": a.confirm,
                 "danger": a.danger,
+                "show_streams": a.show_streams,
                 "steps": [s.name for s in a.steps],
             }
             for a in actions.actions

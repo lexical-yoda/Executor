@@ -10,6 +10,7 @@ Two files, deliberately separate:
 from __future__ import annotations
 
 import ipaddress
+import re
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -17,6 +18,8 @@ import yaml
 from pydantic import BaseModel, Field, StringConstraints, field_validator, model_validator
 
 Slug = Annotated[str, StringConstraints(pattern=r"^[a-z0-9][a-z0-9-]*$")]
+# ${NAME} references in http steps.
+ENV_REF = re.compile(r"\$\{([A-Z_][A-Z0-9_]*)\}")
 
 
 class Check(BaseModel):
@@ -109,9 +112,17 @@ class EdgeIntegration(BaseModel):
     interval: float = 300
 
 
+class JellyfinIntegration(BaseModel):
+    # Server URL as seen from the web container. The API key comes from the
+    # environment (JELLYFIN_API_KEY), never from this file.
+    url: str
+    timeout: float = 8.0
+
+
 class Integrations(BaseModel):
     beszel: BeszelIntegration | None = None
     edge: EdgeIntegration | None = None
+    jellyfin: JellyfinIntegration | None = None
 
 
 class Config(BaseModel):
@@ -143,17 +154,54 @@ class Config(BaseModel):
         return order
 
 
+class SshTarget(BaseModel):
+    # A host whose SSH login runs a fixed dispatcher (a forced command), so a
+    # step can only name one of the dispatcher's commands.
+    host: str
+    user: str
+    port: int = 22
+    key: str = "/ssh/id_ed25519"
+    known_hosts: str = "/ssh/known_hosts"
+
+
+class SshCall(BaseModel):
+    target: Slug
+    command: Slug
+
+
+class HttpCall(BaseModel):
+    method: Literal["GET", "POST", "PUT", "DELETE"] = "POST"
+    # ${NAME} in the url and header values is replaced from the runner's
+    # environment. Those values are never logged.
+    url: str
+    headers: dict[str, str] = {}
+    json_body: dict | list | None = Field(default=None, alias="json")
+    # Statuses that count as success. None means any 2xx.
+    expect: list[int] | None = None
+    verify_tls: bool = True
+
+    model_config = {"populate_by_name": True}
+
+
 class Step(BaseModel):
     name: str
     run: list[str] | None = None
     cwd: str | None = None
     wait_healthy: str | None = None
+    ssh: SshCall | None = None
+    http: HttpCall | None = None
     timeout: float = 300
+    # Retry a failing run, ssh or http step after this many seconds until it
+    # succeeds or the step's timeout runs out. Use it to wait for something.
+    retry_every: float | None = Field(default=None, gt=0)
 
     @model_validator(mode="after")
     def _one_kind(self) -> Step:
-        if bool(self.run) == bool(self.wait_healthy):
-            raise ValueError(f"step '{self.name}' needs exactly one of run or wait_healthy")
+        kinds = [bool(self.run), bool(self.wait_healthy), self.ssh is not None, self.http is not None]
+        if sum(kinds) != 1:
+            raise ValueError(f"step '{self.name}' needs exactly one of run, wait_healthy, ssh or http")
+        if self.retry_every and self.wait_healthy:
+            raise ValueError(f"step '{self.name}': wait_healthy already waits; drop retry_every")
         return self
 
 
@@ -163,10 +211,13 @@ class Action(BaseModel):
     description: str = ""
     confirm: str
     danger: Literal["low", "medium", "high"] = "medium"
+    # Show the media server's active streams in the confirm dialog.
+    show_streams: bool = False
     steps: list[Step] = Field(min_length=1)
 
 
 class ActionsConfig(BaseModel):
+    ssh: dict[str, SshTarget] = {}
     actions: list[Action] = []
 
     @model_validator(mode="after")
@@ -174,7 +225,21 @@ class ActionsConfig(BaseModel):
         ids = [a.id for a in self.actions]
         if len(ids) != len(set(ids)):
             raise ValueError("duplicate action id")
+        for action in self.actions:
+            for step in action.steps:
+                if step.ssh and step.ssh.target not in self.ssh:
+                    raise ValueError(f"step '{step.name}' uses unknown ssh target '{step.ssh.target}'")
         return self
+
+    def secret_names(self) -> set[str]:
+        """Environment variables that http steps read, so they can be kept from child processes."""
+        names: set[str] = set()
+        for action in self.actions:
+            for step in action.steps:
+                if step.http:
+                    for text in (step.http.url, *step.http.headers.values()):
+                        names.update(ENV_REF.findall(text))
+        return names
 
     def get(self, action_id: str) -> Action | None:
         return next((a for a in self.actions if a.id == action_id), None)

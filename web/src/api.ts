@@ -165,7 +165,25 @@ export interface ActionInfo {
   description: string
   confirm: string
   danger: 'low' | 'medium' | 'high'
+  show_streams: boolean
   steps: string[]
+}
+
+export interface Stream {
+  user: string
+  title: string
+  client: string | null
+  device: string | null
+  paused: boolean
+  transcoding: boolean
+  last_activity: string | null
+}
+
+export interface Streams {
+  configured: boolean
+  ok: boolean
+  error: string | null
+  streams: Stream[]
 }
 
 export type StepStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'skipped'
@@ -216,6 +234,7 @@ export const api = {
   history: (machine: string, range: HistoryRange) =>
     request<MachineHistory>(`/api/machines/${encodeURIComponent(machine)}/history?range=${range}`),
   actions: () => request<ActionInfo[]>('/api/actions'),
+  streams: () => request<Streams>('/api/streams'),
   runs: () => request<{ busy: string | null; runs: RunSummary[] }>('/api/runs'),
   run: (id: string, offset: number) => request<RunDetail>(`/api/runs/${id}?offset=${offset}`),
   start: (id: string) =>

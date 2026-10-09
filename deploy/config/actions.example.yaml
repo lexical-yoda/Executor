@@ -1,10 +1,27 @@
 # Example actions. Copy to actions.yaml and edit.
 # actions.yaml is git-ignored and read only by the runner container.
 #
-# Each step is either `run` (an argument list, never a shell string) or
-# `wait_healthy` (a container name). Steps run in order and stop at the first
-# failure. `cwd` must be inside STACKS_DIR, which the runner mounts read-only
-# at the same path as on the host.
+# A step is exactly one of:
+#   run           an argument list, never a shell string. `cwd` must be inside
+#                 STACKS_DIR, which the runner mounts read-only at the same path
+#                 as on the host.
+#   wait_healthy  a container name; waits until Docker reports it healthy.
+#   ssh           a named command on an ssh target below. The target's key
+#                 should be locked to a dispatcher with a forced command, so
+#                 the key can do nothing else (see README, "SSH steps").
+#   http          an API call. ${NAME} in the url and header values is filled
+#                 from the runner's environment and never logged.
+# Steps run in order and stop at the first failure. `retry_every: <seconds>`
+# repeats a failing run, ssh or http step until its timeout, to wait for
+# something. `show_streams: true` lists active media streams in the confirm
+# dialog (needs the jellyfin integration in config.yaml).
+
+# Hosts for ssh steps. The key and known_hosts default to /ssh/id_ed25519 and
+# /ssh/known_hosts, mounted from $EXECUTOR_DIR/ssh.
+ssh:
+  vps:
+    host: 10.8.0.1
+    user: executor
 
 actions:
   - id: reset-download-stack
@@ -31,3 +48,41 @@ actions:
       - name: Restart Sonarr and Radarr
         run: [docker, restart, sonarr, radarr]
         timeout: 120
+
+  - id: restart-jellyfin
+    title: Restart Jellyfin
+    description: Restart the Jellyfin container and wait until it is healthy.
+    confirm: Everyone watching loses playback for about a minute.
+    danger: medium
+    show_streams: true
+    steps:
+      - name: Restart Jellyfin
+        run: [docker, restart, jellyfin]
+        timeout: 120
+      - name: Wait for Jellyfin to be healthy
+        wait_healthy: jellyfin
+        timeout: 300
+
+  - id: scan-libraries
+    title: Scan media libraries
+    description: Start a Jellyfin scan of every library.
+    confirm: The scan runs inside Jellyfin; playback is not interrupted.
+    danger: low
+    steps:
+      - name: Start the library scan
+        http:
+          url: http://host.docker.internal:8096/Library/Refresh
+          headers:
+            Authorization: 'MediaBrowser Token="${JELLYFIN_API_KEY}"'
+          expect: [204]
+        timeout: 30
+
+  - id: vps-nginx-reload
+    title: Reload nginx on the VPS
+    description: Test the VPS's nginx configuration, then reload it.
+    confirm: Open connections finish on the old configuration.
+    danger: low
+    steps:
+      - name: Test and reload nginx
+        ssh: {target: vps, command: nginx-reload}
+        timeout: 60

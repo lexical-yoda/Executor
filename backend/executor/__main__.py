@@ -41,7 +41,15 @@ def main() -> None:
                             timeout=settings.timeout)
         elif settings:
             logging.getLogger("executor").warning("Beszel configured but BESZEL_EMAIL/BESZEL_PASSWORD not set")
-        app = create_web_app(config, runner, static, beszel=beszel)
+        jellyfin = None
+        media = config.integrations.jellyfin
+        if media and os.environ.get("JELLYFIN_API_KEY"):
+            from .sources.jellyfin import Jellyfin
+
+            jellyfin = Jellyfin(media.url, os.environ["JELLYFIN_API_KEY"], timeout=media.timeout)
+        elif media:
+            logging.getLogger("executor").warning("Jellyfin configured but JELLYFIN_API_KEY not set")
+        app = create_web_app(config, runner, static, beszel=beszel, jellyfin=jellyfin)
         uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "1977")), **common)
 
     elif role == "runner":

@@ -7,6 +7,7 @@
 #   $EXECUTOR_DIR/.env                  secrets and paths
 #   $EXECUTOR_DIR/config/config.yaml    from config.example.yaml
 #   $EXECUTOR_DIR/config/actions.yaml   from actions.example.yaml
+#   $EXECUTOR_DIR/ssh/                  key and known_hosts for ssh steps (optional)
 
 services:
   executor:
@@ -24,6 +25,8 @@ services:
       # Optional read-only Beszel login, for machine stats.
       BESZEL_EMAIL: ${BESZEL_EMAIL:-}
       BESZEL_PASSWORD: ${BESZEL_PASSWORD:-}
+      # Optional Jellyfin API key, to warn about active streams.
+      JELLYFIN_API_KEY: ${JELLYFIN_API_KEY:-}
     volumes:
       - ${EXECUTOR_DIR:?set EXECUTOR_DIR in .env}/config/config.yaml:/config/config.yaml:ro
     extra_hosts:
@@ -55,6 +58,8 @@ services:
       EXECUTOR_ACTIONS: /config/actions.yaml
       RUNNER_DATA: /data
       TZ: ${TZ:-UTC}
+      # Secrets that http steps may read as ${NAME}. Child processes never see them.
+      JELLYFIN_API_KEY: ${JELLYFIN_API_KEY:-}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${EXECUTOR_DIR:?set EXECUTOR_DIR in .env}/config/actions.yaml:/config/actions.yaml:ro
@@ -62,8 +67,14 @@ services:
       # Stacks that actions run compose against, read-only and at the same path
       # as on the host, so compose project names and .env files resolve unchanged.
       - ${STACKS_DIR:?set STACKS_DIR in .env}:${STACKS_DIR}:ro
-    # Internal network only: nothing outside this stack can reach the runner.
-    networks: [internal]
+      # SSH key and pinned known_hosts for ssh steps.
+      - ${EXECUTOR_DIR}/ssh:/ssh:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # The web container reaches the runner only over `internal`. `egress` gives
+    # ssh and http steps a way out and has no other members. No port is
+    # published, so nothing outside this stack can reach the runner.
+    networks: [internal, egress]
     security_opt: ["no-new-privileges:true"]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=3)"]
@@ -82,4 +93,6 @@ networks:
     enable_ipv6: false
   internal:
     internal: true
+    enable_ipv6: false
+  egress:
     enable_ipv6: false

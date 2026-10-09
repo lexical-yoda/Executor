@@ -15,14 +15,17 @@ from .config import Config
 from .monitor import Monitor, RunnerClient
 from .security import Guard
 from .sources.beszel import RANGES, Beszel
+from .sources.jellyfin import Jellyfin
 
 log = logging.getLogger("executor.web")
 
 
 def create_web_app(config: Config, runner: RunnerClient | None, static_dir: Path | None,
-                   start_monitor: bool = True, beszel: Beszel | None = None) -> FastAPI:
+                   start_monitor: bool = True, beszel: Beszel | None = None,
+                   jellyfin: Jellyfin | None = None) -> FastAPI:
     monitor = Monitor(config, runner, beszel)
     history_cache: dict[tuple[str, str], tuple[float, dict]] = {}
+    streams_cache: list = []  # [(monotonic time, body)]
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -32,6 +35,8 @@ def create_web_app(config: Config, runner: RunnerClient | None, static_dir: Path
         await monitor.stop()
         if runner:
             await runner.close()
+        if jellyfin:
+            await jellyfin.close()
 
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     app.state.monitor = monitor
@@ -76,6 +81,23 @@ def create_web_app(config: Config, runner: RunnerClient | None, static_dir: Path
             raise HTTPException(404, "No stats for this machine.")
         body = {"machine": machine_id, "range": range, **series}
         history_cache[key] = (now, body)
+        return body
+
+    @app.get("/api/streams")
+    async def streams() -> dict:
+        """Active media streams, for the confirm dialog of disruptive actions."""
+        if jellyfin is None:
+            return {"configured": False, "ok": False, "error": None, "streams": []}
+        now = time.monotonic()
+        if streams_cache and now - streams_cache[0][0] < 10:
+            return streams_cache[0][1]
+        try:
+            body = {"configured": True, "ok": True, "error": None, "streams": await jellyfin.streams()}
+        except Exception as exc:  # noqa: BLE001
+            log.warning("jellyfin sessions failed: %s", exc)
+            message = str(exc) if isinstance(exc, RuntimeError) else exc.__class__.__name__
+            body = {"configured": True, "ok": False, "error": message, "streams": []}
+        streams_cache[:] = [(now, body)]
         return body
 
     @app.get("/api/actions")

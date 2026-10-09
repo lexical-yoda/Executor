@@ -1,3 +1,4 @@
+import os
 import time
 from pathlib import Path
 
@@ -100,3 +101,124 @@ def test_history_survives_restart(tmp_path):
     with make(tmp_path) as c:
         runs = c.get("/runs", headers=AUTH).json()["runs"]
     assert [r["id"] for r in runs] == [run["id"]]
+
+
+# --- ssh, http and retry steps ------------------------------------------------
+
+import httpx  # noqa: E402
+
+SECRET = "s3cret-key-value"
+
+
+def http_actions() -> ActionsConfig:
+    return ActionsConfig.model_validate({"actions": [
+        {"id": "scan", "title": "Scan", "confirm": "sure?", "show_streams": True, "steps": [
+            {"name": "refresh", "http": {"url": "http://media.example:8096/Library/Refresh",
+                                         "headers": {"Authorization": 'MediaBrowser Token="${MEDIA_KEY}"'},
+                                         "expect": [204]}},
+            {"name": "env", "run": ["sh", "-c", "echo key=${MEDIA_KEY:-absent}"]},
+        ]},
+        {"id": "teapot", "title": "Teapot", "confirm": "sure?", "steps": [
+            {"name": "brew", "http": {"method": "GET", "url": "http://media.example/brew"}},
+        ]},
+    ]})
+
+
+def test_http_step_fills_secrets_without_logging_them(tmp_path, monkeypatch):
+    monkeypatch.setenv("MEDIA_KEY", SECRET)
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["auth"] = request.headers.get("authorization")
+        seen["method"] = request.method
+        if request.url.path == "/brew":
+            return httpx.Response(418, text="short and stout")
+        return httpx.Response(204)
+
+    app = create_runner_app(http_actions(), TOKEN, FakeDocker(), tmp_path, httpx.MockTransport(handler))
+    with TestClient(app) as c:
+        listed = c.get("/actions", headers=AUTH).json()
+        assert listed[0]["show_streams"] is True and listed[1]["show_streams"] is False
+        done = wait_for(c, c.post("/runs", json={"action": "scan"}, headers=AUTH).json()["id"])
+        assert done["status"] == "succeeded", done
+        assert seen == {"auth": f'MediaBrowser Token="{SECRET}"', "method": "POST"}
+        log = "\n".join(done["lines"])
+        assert SECRET not in log
+        assert "HTTP 204" in log
+        # Child processes never see a variable that an http step reads.
+        assert "key=absent" in done["lines"]
+
+        failed = wait_for(c, c.post("/runs", json={"action": "teapot"}, headers=AUTH).json()["id"])
+        assert failed["status"] == "failed"
+        assert "unexpected HTTP 418" in failed["error"]
+        assert "short and stout" in failed["lines"]
+
+
+def test_http_step_fails_cleanly_without_its_secret(tmp_path, monkeypatch):
+    monkeypatch.delenv("MEDIA_KEY", raising=False)
+    app = create_runner_app(http_actions(), TOKEN, FakeDocker(), tmp_path,
+                            httpx.MockTransport(lambda r: httpx.Response(204)))
+    with TestClient(app) as c:
+        done = wait_for(c, c.post("/runs", json={"action": "scan"}, headers=AUTH).json()["id"])
+    assert done["status"] == "failed"
+    assert "MEDIA_KEY is not set" in done["error"]
+
+
+def test_retry_every_repeats_until_success(tmp_path):
+    counter = tmp_path / "count"
+    actions = ActionsConfig.model_validate({"actions": [
+        {"id": "wait", "title": "Wait", "confirm": "sure?", "steps": [
+            {"name": "third time lucky", "retry_every": 0.2, "timeout": 10,
+             "run": ["sh", "-c", f"echo x >> {counter}; [ $(wc -l < {counter}) -ge 3 ]"]},
+        ]},
+        {"id": "never", "title": "Never", "confirm": "sure?", "steps": [
+            {"name": "gives up", "retry_every": 0.3, "timeout": 1, "run": ["false"]},
+        ]},
+    ]})
+    with TestClient(create_runner_app(actions, TOKEN, FakeDocker(), tmp_path)) as c:
+        done = wait_for(c, c.post("/runs", json={"action": "wait"}, headers=AUTH).json()["id"])
+        assert done["status"] == "succeeded"
+        assert sum("retrying in" in line for line in done["lines"]) == 2
+        never = wait_for(c, c.post("/runs", json={"action": "never"}, headers=AUTH).json()["id"])
+        assert never["status"] == "failed"
+        assert "exited with code 1" in never["error"]
+
+
+def fake_ssh(tmp_path: Path, monkeypatch, exit_code: int) -> Path:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    script = bin_dir / "ssh"
+    script.write_text(f'#!/bin/sh\necho "args: $*"\nexit {exit_code}\n')
+    script.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
+    return script
+
+
+SSH_ACTIONS = {
+    "ssh": {"vps": {"host": "10.8.0.1", "user": "executor", "key": "/ssh/key", "known_hosts": "/ssh/kh"}},
+    "actions": [{"id": "reload", "title": "Reload", "confirm": "sure?", "steps": [
+        {"name": "reload nginx", "ssh": {"target": "vps", "command": "nginx-reload"}},
+    ]}],
+}
+
+
+def test_ssh_step_pins_the_host_key_and_names_a_command(tmp_path, monkeypatch):
+    fake_ssh(tmp_path, monkeypatch, 0)
+    actions = ActionsConfig.model_validate(SSH_ACTIONS)
+    with TestClient(create_runner_app(actions, TOKEN, FakeDocker(), tmp_path)) as c:
+        done = wait_for(c, c.post("/runs", json={"action": "reload"}, headers=AUTH).json()["id"])
+    assert done["status"] == "succeeded"
+    args = next(line for line in done["lines"] if line.startswith("args: "))
+    for part in ("-F /dev/null", "-i /ssh/key", "BatchMode=yes", "StrictHostKeyChecking=yes",
+                 "UserKnownHostsFile=/ssh/kh", "executor@10.8.0.1 nginx-reload"):
+        assert part in args
+    assert args.endswith("executor@10.8.0.1 nginx-reload")
+
+
+def test_ssh_connection_failure_is_explained(tmp_path, monkeypatch):
+    fake_ssh(tmp_path, monkeypatch, 255)
+    actions = ActionsConfig.model_validate(SSH_ACTIONS)
+    with TestClient(create_runner_app(actions, TOKEN, FakeDocker(), tmp_path)) as c:
+        done = wait_for(c, c.post("/runs", json={"action": "reload"}, headers=AUTH).json()["id"])
+    assert done["status"] == "failed"
+    assert "SSH connection failed" in done["error"]
