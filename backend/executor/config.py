@@ -61,6 +61,8 @@ class Machine(BaseModel):
     icon: MachineIcon = "server"
     # The machine Executor itself runs on: always reachable, reports host stats.
     local: bool = False
+    # System name in Beszel, for live resource stats and history.
+    beszel: str | None = None
 
 
 class Security(BaseModel):
@@ -89,12 +91,25 @@ class Settings(BaseModel):
     check_interval: float = 20
     ping_interval: float = 15
     container_interval: float = 10
+    stats_interval: float = 15
+
+
+class BeszelIntegration(BaseModel):
+    # Hub URL as seen from the web container. Credentials come from the
+    # environment (BESZEL_EMAIL, BESZEL_PASSWORD), never from this file.
+    url: str
+    timeout: float = 8.0
+
+
+class Integrations(BaseModel):
+    beszel: BeszelIntegration | None = None
 
 
 class Config(BaseModel):
     security: Security
     site: Site = Site()
     settings: Settings = Settings()
+    integrations: Integrations = Integrations()
     groups: list[str] = []
     machines: list[Machine]
     services: list[Service]

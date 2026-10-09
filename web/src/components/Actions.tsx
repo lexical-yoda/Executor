@@ -1,7 +1,8 @@
 import { AlertTriangle, Check, CircleDashed, Loader2, Minus, Play, TerminalSquare, X } from 'lucide-react'
-import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, ApiError, type ActionInfo, type RunDetail, type RunSummary, type StepStatus } from '../api'
 import { ago } from '../format'
+import { Modal } from './Modal'
 
 function StepIcon({ status }: { status: StepStatus }) {
   switch (status) {
@@ -16,23 +17,6 @@ function StepIcon({ status }: { status: StepStatus }) {
     default:
       return <CircleDashed size={15} aria-label="pending" />
   }
-}
-
-function Modal({ children, onClose, label }: { children: ReactNode; onClose: () => void; label: string }) {
-  const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
-    document.addEventListener('keydown', onKey)
-    ref.current?.focus()
-    return () => document.removeEventListener('keydown', onKey)
-  }, [onClose])
-  return (
-    <div className="backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal" role="dialog" aria-modal="true" aria-label={label} tabIndex={-1} ref={ref}>
-        {children}
-      </div>
-    </div>
-  )
 }
 
 function ConfirmDialog({

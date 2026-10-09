@@ -43,6 +43,17 @@ containers. The first container is the primary one.
 Machines are pinged over ICMP. The machine marked `local: true` is always up
 and reports load, memory and uptime from `/proc`.
 
+### Machine stats (optional, via Beszel)
+
+Machines with a `beszel:` name get a richer card from a
+[Beszel](https://beszel.dev) hub: CPU, memory, GPU, ZFS pools with health,
+temperatures, network rates, a one-hour sparkline, and a history view (1 hour
+to 30 days) drawn from Beszel's own records. Executor never stores this
+history; it reads it. Configure `integrations.beszel.url` and give the web
+container a Beszel user with the `readonly` role through `BESZEL_EMAIL` and
+`BESZEL_PASSWORD`. Machines without a `beszel:` name show as compact
+online/offline cards.
+
 ### Actions
 
 An action is an ordered list of steps in `actions.yaml`. A step is either `run`
@@ -124,10 +135,9 @@ Tests: `cd backend && ../.venv/bin/python -m pytest -q`. Tests that check a real
 
 ## Roadmap
 
-1. **Phase 1 (this version):** status for every service and machine, and
-   one-click actions.
-2. **Phase 2:** history graphs (bandwidth, VPS CPU and memory, storage, backups,
-   certificate expiry), machine stats from Beszel, and more actions, including
-   a VPS update and reboot.
+1. **Phase 1:** status for every service and machine, and one-click actions.
+2. **Phase 2 (in progress):** machine stats and history from Beszel (done);
+   bandwidth and certificate expiry, media panels, backups panel, and more
+   actions, including a VPS update and reboot.
 3. **Phase 3:** a media section: now playing, active users, a globe of login
    locations, and per-user location history.

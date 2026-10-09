@@ -31,3 +31,23 @@ export const statusLabel: Record<string, string> = {
   degraded: 'Degraded',
   unknown: 'Unknown',
 }
+
+export function rate(bytesPerSecond: number | null): string {
+  if (bytesPerSecond === null) return '—'
+  const units = ['B/s', 'KB/s', 'MB/s', 'GB/s']
+  let value = bytesPerSecond
+  let i = 0
+  while (value >= 1000 && i < units.length - 1) {
+    value /= 1000
+    i += 1
+  }
+  return `${value < 10 && i > 0 ? value.toFixed(1) : Math.round(value)} ${units[i]}`
+}
+
+export function gib(value: number): string {
+  return value >= 1024 ? `${(value / 1024).toFixed(1)} TiB` : `${Math.round(value)} GiB`
+}
+
+export function pct(value: number | null | undefined): string {
+  return value == null ? '—' : `${value < 10 ? value.toFixed(1) : Math.round(value)}%`
+}

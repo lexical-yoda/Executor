@@ -1,7 +1,27 @@
-import { Cloud, Gamepad2, Laptop, Monitor, Router, Server, Smartphone } from 'lucide-react'
-import type { MachineIcon, MachineStatus } from '../api'
-import { ago, duration, latency } from '../format'
-import { StatusPill } from './StatusDot'
+import {
+  Activity,
+  ArrowDown,
+  ArrowUp,
+  Clock,
+  Cloud,
+  Cpu,
+  Gamepad2,
+  HardDrive,
+  Laptop,
+  LineChart,
+  Monitor,
+  Router,
+  Server,
+  Smartphone,
+  Thermometer,
+} from 'lucide-react'
+import { lazy, type ReactNode, Suspense, useState } from 'react'
+import type { MachineIcon, MachineStats, MachineStatus } from '../api'
+import { ago, duration, gib, latency, pct, rate } from '../format'
+import { Sparkline } from './Sparkline'
+import { StatusDot, StatusPill } from './StatusDot'
+
+const MachineDetail = lazy(() => import('./MachineDetail'))
 
 const ICONS: Record<MachineIcon, typeof Server> = {
   server: Server,
@@ -13,61 +33,250 @@ const ICONS: Record<MachineIcon, typeof Server> = {
   router: Router,
 }
 
-function Bar({ label, value, max = 100, suffix = '%' }: { label: string; value: number; max?: number; suffix?: string }) {
-  const pct = Math.min(100, (value / max) * 100)
-  const tone = pct > 90 ? 'down' : pct > 70 ? 'degraded' : 'up'
+function tone(value: number | null | undefined, warn = 70, bad = 90) {
+  if (value == null) return 'unknown'
+  return value >= bad ? 'down' : value >= warn ? 'degraded' : 'up'
+}
+
+function Bar({ value, className = '' }: { value: number | null; className?: string }) {
   return (
-    <div className="bar">
-      <div className="bar-head">
-        <span>{label}</span>
-        <span className="num">
-          {value.toFixed(value < 10 && suffix !== '%' ? 2 : 0)}
-          {suffix}
-        </span>
-      </div>
-      <div className="bar-track">
-        <div className={`bar-fill bar-${tone}`} style={{ width: `${pct}%` }} />
-      </div>
+    <div className={`bar-track ${className}`}>
+      <div className={`bar-fill bar-${tone(value)}`} style={{ width: `${Math.min(100, value ?? 0)}%` }} />
     </div>
   )
 }
 
-function MachineCard({ machine, now, index }: { machine: MachineStatus; now: number; index: number }) {
-  const Icon = ICONS[machine.icon] ?? Server
-  const d = machine.details
+function Gauge({ label, value, detail }: { label: string; value: number | null; detail?: string }) {
   return (
-    <article className={`machine card status-${machine.status}`} style={{ ['--i' as string]: index }}>
+    <div className="gauge">
+      <div className="gauge-head">
+        <span className="gauge-label">{label}</span>
+        <span className={`gauge-value num tone-${tone(value)}`}>{pct(value)}</span>
+      </div>
+      <Bar value={value} />
+      {detail && <span className="gauge-detail small muted num">{detail}</span>}
+    </div>
+  )
+}
+
+function Chip({ icon: Icon, children, title }: { icon: typeof Server; children: ReactNode; title: string }) {
+  return (
+    <span className="stat-chip" title={title}>
+      <Icon size={12} aria-hidden="true" />
+      <span className="num">{children}</span>
+    </span>
+  )
+}
+
+function Storage({ stats }: { stats: MachineStats }) {
+  if (stats.pools.length) {
+    return (
+      <div className="pools">
+        {stats.pools.map((p) => (
+          <div key={p.name} className="pool">
+            <div className="pool-head">
+              <span className="pool-name">{p.name}</span>
+              <span className={`pool-health ${p.health === 'ONLINE' ? 'ok' : 'bad'}`}>{p.health ?? '?'}</span>
+              <span className="small muted num pool-size">
+                {gib(p.used_gib)} / {gib(p.total_gib)}
+              </span>
+              <span className={`num tone-${tone(p.pct, 80, 90)}`}>{pct(p.pct)}</span>
+            </div>
+            <div className="bar-track">
+              <div className={`bar-fill bar-${tone(p.pct, 80, 90)}`} style={{ width: `${p.pct ?? 0}%` }} />
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  }
+  if (stats.disk_pct == null) return null
+  return (
+    <Gauge
+      label="Disk"
+      value={stats.disk_pct}
+      detail={
+        stats.disk_used_gb != null && stats.disk_total_gb != null
+          ? `${Math.round(stats.disk_used_gb)} / ${Math.round(stats.disk_total_gb)} GB`
+          : undefined
+      }
+    />
+  )
+}
+
+function RichCard({ machine, now, index, onOpen }: { machine: MachineStatus; now: number; index: number; onOpen: () => void }) {
+  const Icon = ICONS[machine.icon] ?? Server
+  const s = machine.stats
+  const gpu = s?.gpus[0]
+  const agentDown = s?.state && s.state !== 'up'
+  return (
+    <article className={`machine machine-rich card status-${machine.status}`} style={{ ['--i' as string]: index }}>
       <div className="machine-top">
         <div className="machine-icon">
           <Icon size={20} strokeWidth={1.6} />
         </div>
+        <div className="machine-title">
+          <h3>{machine.name}</h3>
+          <p className="muted small">{machine.role}</p>
+        </div>
         <StatusPill status={machine.status} />
       </div>
-      <h3>{machine.name}</h3>
-      <p className="muted small">{machine.role}</p>
-      <div className="machine-meta">
-        <span className="mono">{machine.address ?? '—'}</span>
-        {machine.status === 'up' && machine.latency_ms !== null && (
-          <span className="num">{latency(machine.latency_ms)}</span>
-        )}
-        {machine.status === 'down' && <span className="small muted">{machine.last_seen ? `seen ${ago(machine.last_seen, now)}` : 'not seen yet'}</span>}
-      </div>
-      {d && (
-        <div className="machine-stats">
-          {d.load && d.cpus ? <Bar label={`Load (${d.cpus} threads)`} value={d.load[0]} max={d.cpus} suffix="" /> : null}
-          {d.mem_used_pct != null && <Bar label={`Memory of ${d.mem_total_gb} GB`} value={d.mem_used_pct} />}
-          {d.uptime_s != null && (
-            <div className="small muted">
-              Up <span className="num">{duration(d.uptime_s)}</span>
+
+      {!s && (
+        <p className="small muted waiting">
+          {machine.status === 'down'
+            ? machine.last_seen
+              ? `Offline, last seen ${ago(machine.last_seen, now)}`
+              : 'Offline'
+            : 'Waiting for stats…'}
+        </p>
+      )}
+      {s && agentDown && <p className="small warn-text">Stats agent is {s.state}.</p>}
+
+      {s && (
+        <>
+          <div className="gauges">
+            <Gauge
+              label="CPU"
+              value={s.cpu_pct}
+              detail={s.load ? `load ${s.load.map((l) => l.toFixed(2)).join(' ')}` : undefined}
+            />
+            <Gauge
+              label="Memory"
+              value={s.mem_pct}
+              detail={
+                s.mem_used_gb != null && s.mem_total_gb != null
+                  ? `${s.mem_used_gb.toFixed(1)} / ${s.mem_total_gb.toFixed(1)} GB${s.arc_gb ? ` · ARC ${s.arc_gb.toFixed(1)}` : ''}`
+                  : undefined
+              }
+            />
+            {gpu && (
+              <Gauge
+                label="GPU"
+                value={gpu.util_pct}
+                detail={gpu.mem_total_mb ? `${Math.round(gpu.mem_used_mb ?? 0)} / ${Math.round(gpu.mem_total_mb)} MB` : undefined}
+              />
+            )}
+          </div>
+
+          {machine.spark && (
+            <div className="spark-wrap" title="CPU and memory, last hour">
+              <Sparkline
+                series={[
+                  { values: machine.spark.mem, className: 'spark-mem', label: 'memory' },
+                  { values: machine.spark.cpu, className: 'spark-cpu', label: 'cpu' },
+                ]}
+              />
+              <span className="spark-legend small muted">
+                <i className="lg-cpu" /> CPU <i className="lg-mem" /> Mem · 1h
+              </span>
             </div>
           )}
-        </div>
+
+          <Storage stats={s} />
+
+          <div className="stat-chips">
+            {s.uptime_s != null && (
+              <Chip icon={Clock} title="Uptime">
+                {duration(s.uptime_s)}
+              </Chip>
+            )}
+            {s.cpu_temp != null && (
+              <Chip icon={Thermometer} title="CPU temperature">
+                CPU {Math.round(s.cpu_temp)}°
+              </Chip>
+            )}
+            {s.gpu_temp != null && (
+              <Chip icon={Cpu} title="GPU temperature">
+                GPU {Math.round(s.gpu_temp)}°
+              </Chip>
+            )}
+            {s.drive_temp_max != null && (
+              <Chip icon={HardDrive} title="Hottest drive">
+                Drives {Math.round(s.drive_temp_max)}°
+              </Chip>
+            )}
+            {s.net_tx_bps != null && (
+              <Chip icon={ArrowUp} title="Upload">
+                {rate(s.net_tx_bps)}
+              </Chip>
+            )}
+            {s.net_rx_bps != null && (
+              <Chip icon={ArrowDown} title="Download">
+                {rate(s.net_rx_bps)}
+              </Chip>
+            )}
+            {machine.latency_ms != null && (
+              <Chip icon={Activity} title="Ping from the NAS">
+                {latency(machine.latency_ms)}
+              </Chip>
+            )}
+          </div>
+
+          <button type="button" className="chart-btn" onClick={onOpen}>
+            <LineChart size={14} /> History
+          </button>
+        </>
       )}
     </article>
   )
 }
 
+function CompactCard({ machine, now }: { machine: MachineStatus; now: number }) {
+  const Icon = ICONS[machine.icon] ?? Server
+  return (
+    <div className={`machine-compact status-${machine.status}`}>
+      <Icon size={16} strokeWidth={1.7} aria-hidden="true" />
+      <div className="compact-text">
+        <span className="compact-name">{machine.name}</span>
+        <span className="small muted mono">{machine.address}</span>
+      </div>
+      <span className="small muted num compact-meta">
+        {machine.status === 'up'
+          ? latency(machine.latency_ms)
+          : machine.last_seen
+            ? `seen ${ago(machine.last_seen, now)}`
+            : 'not seen yet'}
+      </span>
+      <StatusDot status={machine.status} />
+    </div>
+  )
+}
+
+/** Fallback for the local machine when no stats source is configured. */
+function LocalCard({ machine, index }: { machine: MachineStatus; index: number }) {
+  const Icon = ICONS[machine.icon] ?? Server
+  const d = machine.details
+  return (
+    <article className={`machine machine-rich card status-${machine.status}`} style={{ ['--i' as string]: index }}>
+      <div className="machine-top">
+        <div className="machine-icon">
+          <Icon size={20} strokeWidth={1.6} />
+        </div>
+        <div className="machine-title">
+          <h3>{machine.name}</h3>
+          <p className="muted small">{machine.role}</p>
+        </div>
+        <StatusPill status={machine.status} />
+      </div>
+      {d && (
+        <div className="gauges">
+          {d.load && d.cpus ? (
+            <Gauge label={`Load (${d.cpus} threads)`} value={(d.load[0] / d.cpus) * 100} detail={d.load.join(' ')} />
+          ) : null}
+          {d.mem_used_pct != null && <Gauge label="Memory" value={d.mem_used_pct} detail={`of ${d.mem_total_gb} GB`} />}
+        </div>
+      )}
+      {d?.uptime_s != null && <p className="small muted">Up {duration(d.uptime_s)}</p>}
+    </article>
+  )
+}
+
 export function Machines({ machines, now }: { machines: MachineStatus[]; now: number }) {
+  const [open, setOpen] = useState<MachineStatus | null>(null)
+  const rich = machines.filter((m) => m.monitored || m.details)
+  const compact = machines.filter((m) => !m.monitored && !m.details)
+
   return (
     <section className="section">
       <div className="section-head">
@@ -76,11 +285,27 @@ export function Machines({ machines, now }: { machines: MachineStatus[]; now: nu
           {machines.filter((m) => m.status === 'up').length} of {machines.length} online
         </span>
       </div>
-      <div className="machines">
-        {machines.map((m, i) => (
-          <MachineCard key={m.id} machine={m} now={now} index={i} />
-        ))}
+      <div className="machines-rich">
+        {rich.map((m, i) =>
+          m.monitored ? (
+            <RichCard key={m.id} machine={m} now={now} index={i} onOpen={() => setOpen(m)} />
+          ) : (
+            <LocalCard key={m.id} machine={m} index={i} />
+          ),
+        )}
       </div>
+      {compact.length > 0 && (
+        <div className="machines-compact">
+          {compact.map((m) => (
+            <CompactCard key={m.id} machine={m} now={now} />
+          ))}
+        </div>
+      )}
+      {open && (
+        <Suspense fallback={null}>
+          <MachineDetail machine={open} onClose={() => setOpen(null)} />
+        </Suspense>
+      )}
     </section>
   )
 }

@@ -10,6 +10,7 @@ import httpx
 
 from .checks import Probe, http_probe, local_stats, ping, tcp_probe
 from .config import Config, Machine, Service
+from .sources.beszel import Beszel, summarize, to_series
 
 log = logging.getLogger("executor.monitor")
 
@@ -62,9 +63,16 @@ def service_status(service: Service, probe: Probe | None,
 
 
 class Monitor:
-    def __init__(self, config: Config, runner: RunnerClient | None) -> None:
+    def __init__(self, config: Config, runner: RunnerClient | None,
+                 beszel: Beszel | None = None) -> None:
         self.config = config
         self.runner = runner
+        self.beszel = beszel
+        # Beszel: system name -> system record, machine id -> summary / sparkline.
+        self.beszel_systems: dict[str, dict] = {}
+        self.machine_stats: dict[str, dict] = {}
+        self.sparklines: dict[str, dict] = {}
+        self.beszel_error: str | None = None if beszel else "not configured"
         self.probes: dict[str, Probe] = {}
         self.pings: dict[str, Probe] = {}
         self.last_seen: dict[str, str] = {}
@@ -82,6 +90,11 @@ class Monitor:
             asyncio.create_task(self._loop(self.check_machines, settings.ping_interval)),
             asyncio.create_task(self._loop(self.poll_containers, settings.container_interval)),
         ]
+        if self.beszel:
+            self._tasks += [
+                asyncio.create_task(self._loop(self.poll_beszel, settings.stats_interval)),
+                asyncio.create_task(self._loop(self.poll_sparklines, 60)),
+            ]
 
     async def stop(self) -> None:
         for task in self._tasks:
@@ -89,6 +102,8 @@ class Monitor:
         await asyncio.gather(*self._tasks, return_exceptions=True)
         await self._http.aclose()
         await self._http_insecure.aclose()
+        if self.beszel:
+            await self.beszel.close()
 
     @staticmethod
     async def _loop(func, interval: float) -> None:
@@ -137,10 +152,58 @@ class Monitor:
         self.containers = {c["name"]: c for c in items}
         self.runner_error = None
 
+    def _beszel_machines(self) -> list[tuple[Machine, dict]]:
+        """Configured machines that exist in Beszel, with their system record."""
+        return [(m, self.beszel_systems[m.beszel]) for m in self.config.machines
+                if m.beszel and m.beszel in self.beszel_systems]
+
+    async def poll_beszel(self) -> None:
+        assert self.beszel is not None
+        try:
+            self.beszel_systems = await self.beszel.systems()
+            latest = await self.beszel.latest()
+        except Exception as exc:  # noqa: BLE001
+            self.beszel_error = str(exc)[:160] or type(exc).__name__
+            return
+        self.beszel_error = None
+        stats: dict[str, dict] = {}
+        for machine, system in self._beszel_machines():
+            record = latest.get(system["id"])
+            stats[machine.id] = {**summarize(system, record["stats"] if record else None),
+                                 "updated": record["created"] if record else None}
+        self.machine_stats = stats
+
+    async def poll_sparklines(self) -> None:
+        assert self.beszel is not None
+        if not self.beszel_systems:
+            # Both loops start together; make sure the system list exists first.
+            self.beszel_systems = await self.beszel.systems()
+        lines: dict[str, dict] = {}
+        for machine, system in self._beszel_machines():
+            try:
+                series = to_series(await self.beszel.records(system["id"], "1m", 3600))
+            except Exception as exc:  # noqa: BLE001
+                log.warning("sparkline for %s failed: %s", machine.id, exc)
+                continue
+            lines[machine.id] = {"cpu": series["cpu"], "mem": series["mem"]}
+        self.sparklines = lines
+
+    async def history(self, machine_id: str, range_name: str) -> dict | None:
+        machine = next((m for m in self.config.machines if m.id == machine_id), None)
+        if not self.beszel or not machine or not machine.beszel:
+            return None
+        system = self.beszel_systems.get(machine.beszel)
+        if not system:
+            return None
+        return await self.beszel.series(system["id"], range_name)
+
     # --- snapshot ----------------------------------------------------------
     def _machine(self, machine: Machine) -> dict:
         base = {"id": machine.id, "name": machine.name, "role": machine.role,
-                "address": machine.address, "icon": machine.icon, "details": None}
+                "address": machine.address, "icon": machine.icon, "details": None,
+                "monitored": bool(machine.beszel and self.beszel),
+                "stats": self.machine_stats.get(machine.id),
+                "spark": self.sparklines.get(machine.id)}
         if machine.local:
             return {**base, "status": "up", "latency_ms": None, "error": None,
                     "last_seen": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -190,4 +253,6 @@ class Monitor:
                 "containers_known": self.containers is not None,
             },
             "runner": {"ok": self.runner_error is None, "error": self.runner_error},
+            "beszel": {"configured": self.beszel is not None, "ok": self.beszel_error is None,
+                       "error": self.beszel_error},
         }

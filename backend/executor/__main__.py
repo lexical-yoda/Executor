@@ -32,7 +32,16 @@ def main() -> None:
         config = load_config(os.environ.get("EXECUTOR_CONFIG", "/config/config.yaml"))
         runner = RunnerClient(os.environ.get("RUNNER_URL", "http://executor-runner:8001"), _token())
         static = Path(os.environ.get("EXECUTOR_STATIC", "/app/static"))
-        app = create_web_app(config, runner, static)
+        beszel = None
+        settings = config.integrations.beszel
+        if settings and os.environ.get("BESZEL_EMAIL") and os.environ.get("BESZEL_PASSWORD"):
+            from .sources.beszel import Beszel
+
+            beszel = Beszel(settings.url, os.environ["BESZEL_EMAIL"], os.environ["BESZEL_PASSWORD"],
+                            timeout=settings.timeout)
+        elif settings:
+            logging.getLogger("executor").warning("Beszel configured but BESZEL_EMAIL/BESZEL_PASSWORD not set")
+        app = create_web_app(config, runner, static, beszel=beszel)
         uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "1977")), **common)
 
     elif role == "runner":

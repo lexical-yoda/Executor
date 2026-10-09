@@ -21,6 +21,9 @@ services:
       RUNNER_URL: http://executor-runner:8001
       EXECUTOR_CONFIG: /config/config.yaml
       TZ: ${TZ:-UTC}
+      # Optional read-only Beszel login, for machine stats.
+      BESZEL_EMAIL: ${BESZEL_EMAIL:-}
+      BESZEL_PASSWORD: ${BESZEL_PASSWORD:-}
     volumes:
       - ${EXECUTOR_DIR:?set EXECUTOR_DIR in .env}/config/config.yaml:/config/config.yaml:ro
     extra_hosts:

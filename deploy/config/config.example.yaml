@@ -30,6 +30,15 @@ settings:
   check_interval: 20      # seconds between service probes
   ping_interval: 15       # seconds between machine pings
   container_interval: 10  # seconds between container state reads
+  stats_interval: 15      # seconds between Beszel reads
+
+# Optional. Machine stats and history from a Beszel hub. Log in with a Beszel
+# user that has the "readonly" role; its credentials go in .env as
+# BESZEL_EMAIL and BESZEL_PASSWORD, never in this file. Set SHARE_ALL_SYSTEMS
+# on the hub, or add that user to each system.
+integrations:
+  beszel:
+    url: http://host.docker.internal:8090
 
 # Display order of service groups. Groups not listed here follow in order of use.
 groups:
@@ -39,18 +48,21 @@ groups:
   - Public edge
 
 # icon: server | cloud | laptop | phone | desktop | gamepad | router
+# beszel: the system's name in Beszel, to show its resource stats and history.
 machines:
   - id: nas
     name: NAS
     role: Storage and services
     address: 10.8.0.10
     icon: server
+    beszel: NAS
     local: true          # the host Executor runs on; reports load, memory, uptime
   - id: vps
     name: VPS
     role: WireGuard hub, reverse proxy
     address: 10.8.0.1
     icon: cloud
+    beszel: VPS
   - id: laptop
     name: Laptop
     role: Main laptop

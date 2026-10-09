@@ -31,12 +31,54 @@ export interface MachineDetails {
 
 export type MachineIcon = 'server' | 'cloud' | 'laptop' | 'phone' | 'desktop' | 'gamepad' | 'router'
 
+export interface PoolStats {
+  name: string
+  used_gib: number
+  total_gib: number
+  pct: number | null
+  health: string | null
+}
+
+export interface GpuStats {
+  name: string | null
+  util_pct: number | null
+  mem_used_mb: number | null
+  mem_total_mb: number | null
+  power_w: number | null
+}
+
+export interface MachineStats {
+  state: 'up' | 'down' | 'paused' | 'pending' | null
+  threads: number | null
+  cpu_pct: number | null
+  mem_pct: number | null
+  mem_used_gb: number | null
+  mem_total_gb: number | null
+  arc_gb: number | null
+  disk_pct: number | null
+  disk_used_gb: number | null
+  disk_total_gb: number | null
+  load: number[] | null
+  uptime_s: number | null
+  cpu_temp: number | null
+  gpu_temp: number | null
+  drive_temp_max: number | null
+  net_tx_bps: number | null
+  net_rx_bps: number | null
+  gpus: GpuStats[]
+  pools: PoolStats[]
+  updated: string | null
+}
+
 export interface MachineStatus {
   id: string
   name: string
   role: string
   address: string | null
   icon: MachineIcon
+  monitored: boolean
+  stats: MachineStats | null
+  spark: { cpu: (number | null)[]; mem: (number | null)[] } | null
   status: Status
   latency_ms: number | null
   error: string | null
@@ -61,6 +103,24 @@ export interface Snapshot {
     containers_known: boolean
   }
   runner: { ok: boolean; error: string | null }
+  beszel: { configured: boolean; ok: boolean; error: string | null }
+}
+
+export type HistoryRange = '1h' | '12h' | '24h' | '7d' | '30d'
+
+export interface MachineHistory {
+  machine: string
+  range: HistoryRange
+  t: number[]
+  cpu: (number | null)[]
+  mem: (number | null)[]
+  disk: (number | null)[]
+  net_tx: (number | null)[] | null
+  net_rx: (number | null)[] | null
+  cpu_temp: (number | null)[] | null
+  gpu: (number | null)[] | null
+  gpu_temp: (number | null)[] | null
+  pools: Record<string, (number | null)[]>
 }
 
 export interface ActionInfo {
@@ -117,6 +177,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   status: () => request<Snapshot>('/api/status'),
+  history: (machine: string, range: HistoryRange) =>
+    request<MachineHistory>(`/api/machines/${encodeURIComponent(machine)}/history?range=${range}`),
   actions: () => request<ActionInfo[]>('/api/actions'),
   runs: () => request<{ busy: string | null; runs: RunSummary[] }>('/api/runs'),
   run: (id: string, offset: number) => request<RunDetail>(`/api/runs/${id}?offset=${offset}`),

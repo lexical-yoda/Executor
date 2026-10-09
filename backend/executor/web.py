@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -13,13 +14,15 @@ from fastapi.staticfiles import StaticFiles
 from .config import Config
 from .monitor import Monitor, RunnerClient
 from .security import Guard
+from .sources.beszel import RANGES, Beszel
 
 log = logging.getLogger("executor.web")
 
 
 def create_web_app(config: Config, runner: RunnerClient | None, static_dir: Path | None,
-                   start_monitor: bool = True) -> FastAPI:
-    monitor = Monitor(config, runner)
+                   start_monitor: bool = True, beszel: Beszel | None = None) -> FastAPI:
+    monitor = Monitor(config, runner, beszel)
+    history_cache: dict[tuple[str, str], tuple[float, dict]] = {}
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -54,6 +57,26 @@ def create_web_app(config: Config, runner: RunnerClient | None, static_dir: Path
     @app.get("/api/status")
     async def status() -> dict:
         return monitor.snapshot()
+
+    @app.get("/api/machines/{machine_id}/history")
+    async def machine_history(machine_id: str, range: str = "24h") -> dict:  # noqa: A002
+        if range not in RANGES:
+            raise HTTPException(400, "Unknown range.")
+        key = (machine_id, range)
+        cached = history_cache.get(key)
+        now = time.monotonic()
+        if cached and now - cached[0] < 60:
+            return cached[1]
+        try:
+            series = await monitor.history(machine_id, range)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("history for %s failed: %s", machine_id, exc)
+            raise HTTPException(502, "Stats source unavailable.") from None
+        if series is None:
+            raise HTTPException(404, "No stats for this machine.")
+        body = {"machine": machine_id, "range": range, **series}
+        history_cache[key] = (now, body)
+        return body
 
     @app.get("/api/actions")
     async def actions() -> JSONResponse:

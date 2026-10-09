@@ -11,7 +11,8 @@
   "dependencies": {
     "lucide-react": "^1.54.0",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "uplot": "^1.6.32"
   },
   "devDependencies": {
     "@types/react": "^19.3.0",
