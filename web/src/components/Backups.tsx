@@ -237,12 +237,22 @@ function StorageCard({ item, now, index }: { item: StorageStatus; now: number; i
       <div className="stat-chips">
         {fromAws && (
           <>
-            <span className="stat-chip">
-              <span className="num">{signed(aws!.growth_30d)}</span> in 30 days
-            </span>
-            <span className="stat-chip">
-              <span className="num">{signed(aws!.growth_90d)}</span> in 90 days
-            </span>
+            {aws!.growth_30d !== null ? (
+              <span className="stat-chip">
+                <span className="num">{signed(aws!.growth_30d)}</span> in 30 days
+              </span>
+            ) : (
+              aws!.first_date && (
+                <span className="stat-chip">
+                  <span className="num">{signed(aws!.growth_total)}</span> since {day(aws!.first_date)}
+                </span>
+              )
+            )}
+            {aws!.growth_90d !== null && (
+              <span className="stat-chip">
+                <span className="num">{signed(aws!.growth_90d)}</span> in 90 days
+              </span>
+            )}
             {aws!.objects !== null && (
               <span className="stat-chip">
                 <span className="num">{aws!.objects.toLocaleString()}</span> objects

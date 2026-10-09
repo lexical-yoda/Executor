@@ -106,6 +106,8 @@ def summarize_bucket(sizes: dict[str, list[tuple[float, float]]], objects: list[
         "objects": round(objects[-1][1]) if objects else None,
         "growth_30d": growth(30),
         "growth_90d": growth(90),
+        # Until there are 30 days of history.
+        "growth_total": latest["bytes"] - series[0]["bytes"] if latest else None,
         "first_date": series[0]["date"] if series else None,
         "monthly_cost": round(total / 2**30 * price_per_gib_month, 2)
         if total is not None and price_per_gib_month is not None else None,

@@ -54,6 +54,7 @@ def test_summary_growth_and_cost():
     assert summary["growth_30d"] == round((99 - 69) * 0.5 * gib + gib)
     assert summary["monthly_cost"] == round((50 + 49.5 + 1) * 0.004, 2)
     assert len(summary["series"]) == 100
+    assert summary["growth_total"] == round((99 * 0.5 + 1) * gib)
     assert summarize_bucket({}, [], 0.004)["bytes"] is None
 
 

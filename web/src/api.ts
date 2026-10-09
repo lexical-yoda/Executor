@@ -196,6 +196,7 @@ export interface StorageStatus {
     objects: number | null
     growth_30d: number | null
     growth_90d: number | null
+    growth_total: number | null
     first_date: string | null
     monthly_cost: number | null
     series: { date: string; bytes: number }[]
