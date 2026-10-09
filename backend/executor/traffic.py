@@ -35,6 +35,9 @@ def ingest(data: dict, locate: Locate | None, home_ip: str | None) -> dict:
             cache[ip] = _place(locate(ip) if locate else None)
         return cache[ip]
 
+    # The edge server may count requests from its WireGuard peers (the owner's
+    # devices, wherever they are, and home) itself; otherwise the home address does.
+    peers = bool(data.get("own_from_peers"))
     own: dict[tuple[int, str], int] = defaultdict(int)
     places: dict[tuple, list] = {}
     for v in data.get("visitor_ips") or []:
@@ -52,7 +55,7 @@ def ingest(data: dict, locate: Locate | None, home_ip: str | None) -> dict:
         "hour": int(s["hour"]), "site": str(s["site"])[:100],
         **{k: int(s.get(k) or 0) for k in ("requests", "monitor", "s2", "s3", "s4", "s5", "bytes", "visitors",
                                            "cache_hit", "cache_total")},
-        "own": own.get((int(s["hour"]), str(s["site"])), 0),
+        "own": int(s.get("own") or 0) if peers else own.get((int(s["hour"]), str(s["site"])), 0),
         "rt": json.dumps([int(x) for x in s.get("rt") or []]),
     } for s in data.get("sites") or []]
     threats = [{"hour": int(t["hour"]), **{k: int(t.get(k) or 0) for k in ("ssh", "bans", "fw", "scans")}}

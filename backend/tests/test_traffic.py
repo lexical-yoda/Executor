@@ -112,3 +112,15 @@ def test_monitor_routes_and_recap(tmp_path):
     assert threats["totals"]["ssh"] == 10 and threats["points"] == [] and threats["sources"][0]["ip"] == "198.51.100.7"
     recap = build_recap(store, now=NOW)["edge"]
     assert recap["requests"] == 220 and recap["busiest"]["site"] == "media.example.com" and recap["attacks"] == 14
+
+
+def test_own_traffic_counted_by_the_edge_server():
+    data = summary()
+    data["own_from_peers"] = True
+    for s in data["sites"]:
+        s["own"] = 25 if s["site"] == "media.example.com" else 0
+    # Its own addresses are never sent; the home address no longer decides.
+    rows = traffic.ingest(data, PLACES.get, HOME)
+    media = next(s for s in rows["sites"] if s["site"] == "media.example.com")
+    assert media["own"] == 25
+    assert all(p[2] != "" or p[3] != "" for p in rows["places"])

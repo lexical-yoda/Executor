@@ -143,8 +143,9 @@ credits (instance credits accruing hourly plus the free monthly credits).
 Two more cards in the Edge section, from `integrations.edge.traffic_url`:
 
 - **Public sites:** requests to each site over the last day (health checks
-  from Executor and Uptime Kuma counted apart, and the share from home, the
-  server's own public address), server and client errors, response times
+  from Executor and Uptime Kuma counted apart, and the share from your own
+  devices: the current public addresses of the edge server's WireGuard
+  peers, or else home), server and client errors, response times
   (median and 95th percentile), edge cache hits, data served and where
   visitors are. A site's drawer charts 24 hours, 7 or 30 days.
 - **Shields:** failed SSH logins, fail2ban bans, firewall blocks and
@@ -160,7 +161,10 @@ last 49 hours as JSON: `sites` (per hour and site: requests, health checks,
 status classes, bytes, a request-time histogram, cache hits), `visitor_ips`
 and `threat_ips` (per hour, address and count), `threat_hours`,
 `threat_tags` (usernames and ports) and `recent_15m`. No paths, queries or
-user agents are kept. Executor places each address with its geolocation
+user agents are kept. With `own_from_peers`, the summariser counts requests
+from its WireGuard peers' current public addresses as `own` per site and
+never sends those addresses; listing peers needs root, so its unit records
+them in a pre-start step for each run. Executor places each address with its geolocation
 databases, keeps visitors only as city counts (35 days) and attacker
 addresses for a week, and keeps hourly totals for 400 days. A site serving
 more than 5% server errors over 15 minutes raises an alert; an hour with
