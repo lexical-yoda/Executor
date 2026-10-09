@@ -81,7 +81,7 @@ class Monitor:
         self.media_settings = config.integrations.media
         self.requests: dict | None = None
         self.requests_error: str | None = None
-        self._requests_checked = 0.0
+        self._requests_checked = float("-inf")  # so the first poll always fetches
         self.queue: list[dict] = []
         self.queue_errors: dict[str, str] = {}
         self.torrents: dict | None = None
