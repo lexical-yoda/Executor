@@ -8,22 +8,22 @@ import {
   Gamepad2,
   HardDrive,
   Laptop,
-  LineChart,
   Monitor,
   Router,
   Server,
   Smartphone,
   Thermometer,
 } from 'lucide-react'
-import { lazy, type ReactNode, Suspense, useState } from 'react'
+import type { ReactNode } from 'react'
 import type { MachineIcon, MachineStats, MachineStatus } from '../api'
 import { ago, duration, gib, latency, pct, rate } from '../format'
+import { useApp } from '../state'
+import { AttachedActions } from './ActionKit'
 import { Sparkline } from './Sparkline'
 import { StatusDot, StatusPill } from './StatusDot'
+import { Num } from './ui'
 
-const MachineDetail = lazy(() => import('./MachineDetail'))
-
-const ICONS: Record<MachineIcon, typeof Server> = {
+export const ICONS: Record<MachineIcon, typeof Server> = {
   server: Server,
   cloud: Cloud,
   laptop: Laptop,
@@ -51,7 +51,7 @@ function Gauge({ label, value, detail }: { label: string; value: number | null; 
     <div className="gauge">
       <div className="gauge-head">
         <span className="gauge-label">{label}</span>
-        <span className={`gauge-value num tone-${tone(value)}`}>{pct(value)}</span>
+        <Num value={value} format={(v) => pct(v)} className={`gauge-value tone-${tone(value)}`} />
       </div>
       <Bar value={value} />
       {detail && <span className="gauge-detail small muted num">{detail}</span>}
@@ -120,7 +120,15 @@ function RichCard({
   const gpu = s?.gpus[0]
   const agentDown = s?.state && s.state !== 'up'
   return (
-    <article className={`machine machine-rich card status-${machine.status}`} style={{ ['--i' as string]: index }}>
+    <article
+      className={`machine machine-rich card clickable status-${machine.status}`}
+      style={{ ['--i' as string]: index }}
+      onClick={onOpen}
+      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onOpen())}
+      role="button"
+      tabIndex={0}
+      aria-label={`${machine.name} details`}
+    >
       <div className="machine-top">
         <div className="machine-icon">
           <Icon size={20} strokeWidth={1.6} />
@@ -227,19 +235,17 @@ function RichCard({
             )}
           </div>
 
-          <button type="button" className="chart-btn" onClick={onOpen}>
-            <LineChart size={14} /> History
-          </button>
         </>
       )}
+      <AttachedActions target={machine.id} label={false} />
     </article>
   )
 }
 
-function CompactCard({ machine, now }: { machine: MachineStatus; now: number }) {
+function CompactCard({ machine, now, onOpen }: { machine: MachineStatus; now: number; onOpen: () => void }) {
   const Icon = ICONS[machine.icon] ?? Server
   return (
-    <div className={`machine-compact status-${machine.status}`}>
+    <button type="button" className={`machine-compact status-${machine.status}`} onClick={onOpen}>
       <Icon size={16} strokeWidth={1.7} aria-hidden="true" />
       <div className="compact-text">
         <span className="compact-name">{machine.name}</span>
@@ -253,16 +259,22 @@ function CompactCard({ machine, now }: { machine: MachineStatus; now: number }) 
             : 'not seen yet'}
       </span>
       <StatusDot status={machine.status} />
-    </div>
+    </button>
   )
 }
 
 /** Fallback for the local machine when no stats source is configured. */
-function LocalCard({ machine, index }: { machine: MachineStatus; index: number }) {
+function LocalCard({ machine, index, onOpen }: { machine: MachineStatus; index: number; onOpen: () => void }) {
   const Icon = ICONS[machine.icon] ?? Server
   const d = machine.details
   return (
-    <article className={`machine machine-rich card status-${machine.status}`} style={{ ['--i' as string]: index }}>
+    <article
+      className={`machine machine-rich card clickable status-${machine.status}`}
+      style={{ ['--i' as string]: index }}
+      onClick={onOpen}
+      role="button"
+      tabIndex={0}
+    >
       <div className="machine-top">
         <div className="machine-icon">
           <Icon size={20} strokeWidth={1.6} />
@@ -286,8 +298,8 @@ function LocalCard({ machine, index }: { machine: MachineStatus; index: number }
   )
 }
 
-export function Machines({ machines, now }: { machines: MachineStatus[]; now: number }) {
-  const [open, setOpen] = useState<MachineStatus | null>(null)
+export function Machines({ machines }: { machines: MachineStatus[] }) {
+  const { open, now } = useApp()
   const rich = machines.filter((m) => m.monitored || m.details)
   const compact = machines.filter((m) => !m.monitored && !m.details)
 
@@ -302,23 +314,18 @@ export function Machines({ machines, now }: { machines: MachineStatus[]; now: nu
       <div className="machines-rich">
         {rich.map((m, i) =>
           m.monitored ? (
-            <RichCard key={m.id} machine={m} now={now} index={i} onOpen={() => setOpen(m)} />
+            <RichCard key={m.id} machine={m} now={now} index={i} onOpen={() => open('machine', m.id)} />
           ) : (
-            <LocalCard key={m.id} machine={m} index={i} />
+            <LocalCard key={m.id} machine={m} index={i} onOpen={() => open('machine', m.id)} />
           ),
         )}
       </div>
       {compact.length > 0 && (
         <div className="machines-compact">
           {compact.map((m) => (
-            <CompactCard key={m.id} machine={m} now={now} />
+            <CompactCard key={m.id} machine={m} now={now} onOpen={() => open('machine', m.id)} />
           ))}
         </div>
-      )}
-      {open && (
-        <Suspense fallback={null}>
-          <MachineDetail machine={open} onClose={() => setOpen(null)} />
-        </Suspense>
       )}
     </section>
   )

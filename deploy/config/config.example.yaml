@@ -54,9 +54,10 @@ integrations:
     # the free DB-IP Lite database; addresses are never sent anywhere.
     history_days: 90
     # On the map, streams flow from origin (the media server) to hub (a
-    # public relay or reverse proxy) and out to viewers. Both optional.
-    origin: {label: Home, lat: 52.37, lon: 4.9}
-    hub: {label: Edge server, lat: 50.11, lon: 8.68}
+    # public relay or reverse proxy) and out to viewers. Both optional; with
+    # `machine`, the marker shows that machine's health and opens its details.
+    origin: {label: Home, lat: 52.37, lon: 4.9, machine: nas}
+    hub: {label: Edge server, lat: 50.11, lon: 8.68, machine: vps}
     # Ask this for the server's public address; sessions from it are placed
     # at origin (useful when the server is at home on a changing address).
     home_ip_url: https://api.ipify.org

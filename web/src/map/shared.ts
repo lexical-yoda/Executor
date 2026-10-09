@@ -1,9 +1,0 @@
-import { feature } from 'topojson-client'
-import type { Topology } from 'topojson-specification'
-import world from 'world-atlas/countries-110m.json'
-
-/** Natural Earth 1:110m countries (public domain), bundled so no tiles are fetched. */
-export const countries110 = feature(
-  world as unknown as Topology,
-  (world as unknown as Topology).objects.countries,
-) as unknown as GeoJSON.FeatureCollection

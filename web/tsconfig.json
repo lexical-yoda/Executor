@@ -11,7 +11,7 @@
     "noFallthroughCasesInSwitch": true,
     "skipLibCheck": true,
     "isolatedModules": true,
-    "types": ["vite/client"],
+    "types": ["vite/client", "geojson"],
     "resolveJsonModule": true
   },
   "include": ["src", "vite.config.ts"]

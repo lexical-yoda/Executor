@@ -8,6 +8,7 @@
 #   $EXECUTOR_DIR/config/config.yaml    from config.example.yaml
 #   $EXECUTOR_DIR/config/actions.yaml   from actions.example.yaml
 #   $EXECUTOR_DIR/ssh/                  key and known_hosts for ssh steps (optional)
+#   $EXECUTOR_DIR/tiles/                map tile archives, world.pmtiles and optional detail (optional)
 
 services:
   executor:
@@ -43,9 +44,12 @@ services:
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
     volumes:
       - ${EXECUTOR_DIR:?set EXECUTOR_DIR in .env}/config/config.yaml:/config/config.yaml:ro
-      # Optional writable folder for media location history and the
-      # geolocation database. Must be owned by uid 10001.
+      # Optional writable folder for history (events, uptime, machine stats,
+      # media locations and plays) and the geolocation database. Must be
+      # owned by uid 10001.
       - ${EXECUTOR_WEB_DATA:-/var/empty}:/data
+      # Map tiles: .pmtiles archives (see README, "Map tiles"), read-only.
+      - ${EXECUTOR_DIR}/tiles:/tiles:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     sysctls:

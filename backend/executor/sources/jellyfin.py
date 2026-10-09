@@ -14,6 +14,10 @@ import httpx
 
 IP_IN_OVERVIEW = re.compile(r"IP address:\s*(\S+)")
 ONLINE_FROM = re.compile(r" is online from (.+)$")
+# "<user> is playing <item> on <device>" and "<user> has finished playing <item> on <device>".
+PLAYING = re.compile(r" (is playing|has finished playing) (.+)$")
+PLAY_TYPES = {"VideoPlayback": "start", "AudioPlayback": "start",
+              "VideoPlaybackStopped": "stop", "AudioPlaybackStopped": "stop"}
 
 
 def describe_item(item: dict) -> str:
@@ -85,6 +89,38 @@ def parse_activity(entry: dict) -> dict | None:
             "when": when, "device": clean_device(device.group(1)) if device else None}
 
 
+def parse_playback(entry: dict) -> dict | None:
+    """A playback start or stop from the activity log."""
+    event = PLAY_TYPES.get(entry.get("Type") or "")
+    when = parse_time(entry.get("Date"))
+    if not event or not entry.get("UserId") or when is None:
+        return None
+    match = PLAYING.search(entry.get("Name") or "")
+    label, device = None, None
+    if match:
+        label, _, device = match.group(2).rpartition(" on ")
+        if not label:
+            label, device = match.group(2), None
+    return {"id": entry.get("Id"), "event": event, "user_id": entry["UserId"].replace("-", ""),
+            "item_id": (entry.get("ItemId") or "").replace("-", "") or None, "label": label or "Unknown",
+            "device": clean_device(device), "when": when}
+
+
+def describe_library_item(item: dict) -> dict:
+    """Title (series name for episodes), episode label, kind, year and runtime."""
+    kind = item.get("Type")
+    runtime = item.get("RunTimeTicks")
+    episode = None
+    if kind == "Episode":
+        season, number = item.get("ParentIndexNumber"), item.get("IndexNumber")
+        code = f"S{season:02d}E{number:02d} · " if isinstance(season, int) and isinstance(number, int) else ""
+        episode = f"{code}{item.get('Name') or ''}".strip(" ·") or None
+    return {"id": (item.get("Id") or "").replace("-", ""),
+            "title": (item.get("SeriesName") if kind == "Episode" else None) or item.get("Name") or "Unknown",
+            "episode": episode, "kind": kind, "year": item.get("ProductionYear"),
+            "runtime_s": round(runtime / 10_000_000) if runtime else None}
+
+
 class Jellyfin:
     def __init__(self, url: str, api_key: str, timeout: float = 8.0,
                  transport: httpx.AsyncBaseTransport | None = None) -> None:
@@ -112,16 +148,30 @@ class Jellyfin:
     async def users(self) -> dict[str, str]:
         return {u["Id"].replace("-", ""): u.get("Name") or "Unknown" for u in await self._get("/Users")}
 
-    async def activity_since(self, last_id: int, page: int = 500, max_pages: int = 40) -> list[dict]:
-        """Sign-in events newer than ``last_id``, oldest first."""
+    async def entries_since(self, last_id: int, page: int = 500, max_pages: int = 40) -> list[dict]:
+        """Raw activity log entries with a user, newer than ``last_id``, oldest first."""
         found: list[dict] = []
         for index in range(max_pages):
             data = await self._get("/System/ActivityLog/Entries", startIndex=index * page, limit=page,
                                    hasUserId="true")
             items = data.get("Items") or []
             newer = [i for i in items if (i.get("Id") or 0) > last_id]
-            found += [e for e in (parse_activity(i) for i in newer) if e]
+            found += newer
             if len(newer) < len(items) or len(items) < page:
                 break
-        found.sort(key=lambda e: e["id"])
+        found.sort(key=lambda e: e.get("Id") or 0)
+        return found
+
+    async def activity_since(self, last_id: int, page: int = 500, max_pages: int = 40) -> list[dict]:
+        """Sign-in events newer than ``last_id``, oldest first."""
+        entries = await self.entries_since(last_id, page, max_pages)
+        return [e for e in (parse_activity(i) for i in entries) if e]
+
+    async def items(self, ids: list[str]) -> list[dict]:
+        """Library details for item ids (deleted items are simply missing)."""
+        found: list[dict] = []
+        for start in range(0, len(ids), 50):
+            data = await self._get("/Items", ids=",".join(ids[start:start + 50]), enableImages="false",
+                                   enableUserData="false", recursive="true")
+            found += [describe_library_item(i) for i in data.get("Items") or []]
         return found

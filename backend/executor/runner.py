@@ -386,6 +386,8 @@ def create_runner_app(actions: ActionsConfig, token: str, docker: DockerAPI, dat
                 "confirm": a.confirm,
                 "danger": a.danger,
                 "show_streams": a.show_streams,
+                "group": a.group,
+                "attach": a.attach,
                 "steps": [s.name for s in a.steps],
             }
             for a in actions.actions

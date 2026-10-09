@@ -8,8 +8,11 @@ import type {
   StorageStatus,
 } from '../api'
 import { ago, bytes, duration, until } from '../format'
+import { useApp } from '../state'
+import { AttachedActions } from './ActionKit'
+import { Empty, Facts, Num, SourceNote } from './ui'
 
-const LABEL: Record<BackupStatus, string> = {
+export const LABEL: Record<BackupStatus, string> = {
   ok: 'OK',
   warning: 'Warnings',
   failed: 'Failed',
@@ -19,7 +22,7 @@ const LABEL: Record<BackupStatus, string> = {
   unknown: 'Unknown',
 }
 
-function StatusPill({ status }: { status: BackupStatus }) {
+export function BackupPill({ status }: { status: BackupStatus }) {
   return (
     <span className={`backup-pill bk-${status}`}>
       {status === 'running' && <Loader2 size={11} className="spin" />}
@@ -28,7 +31,7 @@ function StatusPill({ status }: { status: BackupStatus }) {
   )
 }
 
-function when(seconds: number): string {
+export function when(seconds: number): string {
   return new Date(seconds * 1000).toLocaleString(undefined, {
     weekday: 'short',
     day: 'numeric',
@@ -38,7 +41,7 @@ function when(seconds: number): string {
   })
 }
 
-function runTone(result: string): string {
+export function runTone(result: string): string {
   if (result === 'Success') return 'ok'
   if (result === 'Warning') return 'warning'
   if (result === 'Error' || result === 'Fatal') return 'failed'
@@ -64,14 +67,21 @@ function RunStrip({ runs }: { runs: BackupRun[] }) {
 }
 
 function JobCard({ job, now, index }: { job: DuplicatiJob; now: number; index: number }) {
+  const { open } = useApp()
   const latest = job.history[job.history.length - 1]
   const fraction = job.progress?.fraction
   return (
-    <article className={`backup-card card bk-edge-${job.status}`} style={{ ['--i' as string]: index }}>
+    <article
+      className={`backup-card card clickable bk-edge-${job.status}`}
+      style={{ ['--i' as string]: index }}
+      onClick={() => open('backup', job.id)}
+      role="button"
+      tabIndex={0}
+    >
       <div className="edge-head">
         <Archive size={16} />
         <h3>{job.name}</h3>
-        <StatusPill status={job.status} />
+        <BackupPill status={job.status} />
       </div>
 
       {job.status === 'running' ? (
@@ -115,18 +125,26 @@ function JobCard({ job, now, index }: { job: DuplicatiJob; now: number; index: n
         )}
       </div>
       {job.last_error && <p className="small warn-text">{job.last_error}</p>}
+      <AttachedActions target={`backup-${job.id}`} label={false} />
     </article>
   )
 }
 
 function FileCard({ item, now, index }: { item: FileBackupStatus; now: number; index: number }) {
+  const { open } = useApp()
   const single = item.kept !== null
   return (
-    <article className={`backup-card card bk-edge-${item.status}`} style={{ ['--i' as string]: index }}>
+    <article
+      className={`backup-card card clickable bk-edge-${item.status}`}
+      style={{ ['--i' as string]: index }}
+      onClick={() => open('files', item.name)}
+      role="button"
+      tabIndex={0}
+    >
       <div className="edge-head">
         {single ? <FileArchive size={16} /> : <Database size={16} />}
         <h3>{item.name}</h3>
-        <StatusPill status={item.status} />
+        <BackupPill status={item.status} />
       </div>
       <div className="backup-main">
         <span className="backup-big num">{item.last ? ago(item.last * 1000, now) : 'never'}</span>
@@ -167,12 +185,12 @@ const STORAGE_LABEL: Record<string, string> = {
   StandardStorage: 'Standard',
 }
 
-function signed(value: number | null): string {
+export function signed(value: number | null): string {
   if (value === null) return '—'
   return `${value >= 0 ? '+' : '−'}${bytes(Math.abs(value))}`
 }
 
-function day(date: string): string {
+export function day(date: string): string {
   return new Date(`${date}T00:00:00Z`).toLocaleDateString(undefined, {
     day: 'numeric',
     month: 'short',
@@ -180,7 +198,7 @@ function day(date: string): string {
   })
 }
 
-function SizeChart({ series }: { series: { date: string; bytes: number }[] }) {
+export function SizeChart({ series }: { series: { date: string; bytes: number }[] }) {
   if (series.length < 2) return null
   const values = series.map((p) => p.bytes)
   const max = Math.max(...values)
@@ -214,11 +232,18 @@ function SizeChart({ series }: { series: { date: string; bytes: number }[] }) {
 }
 
 function StorageCard({ item, now, index }: { item: StorageStatus; now: number; index: number }) {
+  const { open } = useApp()
   const aws = item.aws
   const fromAws = aws?.bytes != null
   const status: BackupStatus = fromAws ? 'ok' : item.error ? 'warning' : 'unknown'
   return (
-    <article className={`backup-card storage-card card bk-edge-${status}`} style={{ ['--i' as string]: index }}>
+    <article
+      className={`backup-card storage-card card clickable bk-edge-${status}`}
+      style={{ ['--i' as string]: index }}
+      onClick={() => open('storage', item.name)}
+      role="button"
+      tabIndex={0}
+    >
       <div className="edge-head">
         <CloudUpload size={16} />
         <h3>{item.name}</h3>
@@ -226,7 +251,7 @@ function StorageCard({ item, now, index }: { item: StorageStatus; now: number; i
       </div>
 
       <div className="backup-main">
-        <span className="backup-big num">{bytes(fromAws ? aws!.bytes : item.duplicati_bytes)}</span>
+        <Num className="backup-big" value={fromAws ? aws!.bytes : item.duplicati_bytes} format={(v) => bytes(v)} />
         <span className="small muted">
           {fromAws
             ? `stored in AWS, as of ${day(aws!.as_of!)}`
@@ -292,7 +317,8 @@ function StorageCard({ item, now, index }: { item: StorageStatus; now: number; i
   )
 }
 
-export function Backups({ backups, now }: { backups: BackupsData; now: number }) {
+export function Backups({ backups }: { backups: BackupsData }) {
+  const { now } = useApp()
   const { duplicati, files } = backups
   return (
     <section className="section">
@@ -314,6 +340,141 @@ export function Backups({ backups, now }: { backups: BackupsData; now: number })
           <StorageCard key={item.name} item={item} now={now} index={duplicati.jobs.length + files.length + i} />
         ))}
       </div>
+      <AttachedActions target="backups" />
     </section>
+  )
+}
+
+export function BackupJobDrawer({ id }: { id: string }) {
+  const { snapshot, now } = useApp()
+  const job = snapshot?.backups?.duplicati.jobs.find((j) => j.id === id)
+  if (!job) return <Empty>This backup job is not in Duplicati any more.</Empty>
+  return (
+    <div>
+      <div className="drawer-kicker">
+        <Archive size={14} /> Duplicati job <BackupPill status={job.status} />
+      </div>
+      <h3 className="drawer-title">{job.name}</h3>
+      {job.status === 'running' && job.progress && (
+        <div className="backup-progress">
+          <div className="bw-bar">
+            <div className="bw-fill bar-data" style={{ width: `${Math.round((job.progress.fraction ?? 0) * 100)}%` }} />
+          </div>
+          <span className="small muted">{job.progress.phase?.replace(/_/g, ' ') ?? 'Working'}</span>
+        </div>
+      )}
+      <Facts
+        items={[
+          ['Last run', job.last_finished ? `${ago(job.last_finished * 1000, now)} · ${when(job.last_finished)}` : 'never'],
+          ['Result', job.last_result],
+          ['Took', job.last_duration_s != null ? duration(job.last_duration_s) : null],
+          ['Next run', job.next_run ? `${until(job.next_run * 1000, now)} · ${when(job.next_run)}` : null],
+          ['Repeats', job.repeat],
+          ['Source', bytes(job.source_bytes)],
+          ['Stored', bytes(job.target_bytes)],
+          ['Versions', job.versions != null ? String(job.versions) : null],
+          ['Error', job.last_error],
+        ]}
+      />
+      <AttachedActions target={`backup-${job.id}`} />
+      <h4 className="drawer-sub">Recent runs</h4>
+      {job.history.length ? (
+        <ul className="run-history">
+          {[...job.history].reverse().map((r, i) => (
+            <li key={i} className={`bk-row bk-${runTone(r.result)}`}>
+              <span className={`file-dot bk-${runTone(r.result)}`} />
+              <span>{r.result}</span>
+              <span className="small muted">{r.finished ? when(r.finished) : ''}</span>
+              <span className="small muted num">
+                {r.added_bytes !== null ? `+${bytes(r.added_bytes)}` : ''}
+                {r.warnings ? ` · ${r.warnings} warnings` : ''}
+                {r.errors ? ` · ${r.errors} errors` : ''}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <Empty>No runs recorded yet.</Empty>
+      )}
+      <SourceNote source="Duplicati" at={snapshot?.backups?.checked_at} />
+    </div>
+  )
+}
+
+export function FileBackupDrawer({ name }: { name: string }) {
+  const { snapshot, now } = useApp()
+  const item = snapshot?.backups?.files.find((f) => f.name === name)
+  if (!item) return <Empty>No such file backup.</Empty>
+  return (
+    <div>
+      <div className="drawer-kicker">
+        <Database size={14} /> File backup <BackupPill status={item.status} />
+      </div>
+      <h3 className="drawer-title">{item.name}</h3>
+      <Facts
+        items={[
+          ['Last written', item.last ? `${ago(item.last * 1000, now)} · ${when(item.last)}` : 'never'],
+          ['Schedule', item.schedule],
+          ['Kept', item.kept != null ? String(item.kept) : null],
+          ['Last log line', item.log_line ? <span className="mono small">{item.log_line}</span> : null],
+          ['Error', item.error],
+        ]}
+      />
+      <h4 className="drawer-sub">Files</h4>
+      <ul className="backup-files">
+        {item.files.map((f) => (
+          <li key={f.name}>
+            <span className={`file-dot bk-${f.state}`} title={LABEL[f.state]} />
+            <span className="mono">{f.name}</span>
+            <span className="muted num">
+              {f.size !== null ? bytes(f.size) : LABEL[f.state].toLowerCase()}
+              {f.mtime ? ` · ${ago(f.mtime * 1000, now)}` : ''}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <SourceNote source="The runner's report of the backup folder" at={snapshot?.backups?.checked_at} />
+    </div>
+  )
+}
+
+export function StorageDrawer({ name }: { name: string }) {
+  const { snapshot, now } = useApp()
+  const item = snapshot?.backups?.storage.find((s) => s.name === name)
+  if (!item) return <Empty>No such storage.</Empty>
+  const aws = item.aws
+  return (
+    <div>
+      <div className="drawer-kicker">
+        <CloudUpload size={14} /> Off-site storage
+      </div>
+      <h3 className="drawer-title">{item.name}</h3>
+      <p className="mono small muted">{item.bucket}</p>
+      {aws && aws.series.length > 1 && <SizeChart series={aws.series} />}
+      <Facts
+        items={[
+          ['Stored', bytes(aws?.bytes ?? item.duplicati_bytes)],
+          ['As of', aws?.as_of ? day(aws.as_of) : null],
+          ['Last 7 days', aws ? signed(aws.growth_7d) : null],
+          ['Last 30 days', aws ? signed(aws.growth_30d) : null],
+          ['Last 90 days', aws ? signed(aws.growth_90d) : null],
+          ['Since first record', aws?.first_date ? `${signed(aws.growth_total)} since ${day(aws.first_date)}` : null],
+          ['Objects', aws?.objects != null ? aws.objects.toLocaleString() : null],
+          ['Cost', (aws?.monthly_cost ?? item.fallback_cost) != null ? `≈ $${(aws?.monthly_cost ?? item.fallback_cost)!.toFixed(2)} a month (storage only)` : null],
+          ['Duplicati says', item.duplicati_bytes != null ? `${bytes(item.duplicati_bytes)}${item.duplicati_versions != null ? ` · ${item.duplicati_versions} versions` : ''}` : null],
+          [
+            'By class',
+            aws && Object.keys(aws.by_type).length
+              ? Object.entries(aws.by_type)
+                  .map(([type, size]) => `${STORAGE_LABEL[type] ?? type} ${bytes(size)}`)
+                  .join(' · ')
+              : null,
+          ],
+          ['Problem', item.error],
+        ]}
+      />
+      <SourceNote source={aws ? 'AWS CloudWatch (daily storage metrics)' : 'Duplicati'} at={aws?.fetched_at} />
+      {aws && <p className="small muted">Checked {ago(aws.fetched_at * 1000, now)}; AWS updates these figures once a day.</p>}
+    </div>
   )
 }

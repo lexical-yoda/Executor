@@ -13,13 +13,15 @@ import time
 import httpx
 
 from .sources.geo import Locator, public_ip
-from .sources.jellyfin import Jellyfin, clean_device, parse_time, summarize_sessions
+from .sources.jellyfin import Jellyfin, clean_device, parse_activity, parse_playback, parse_time, summarize_sessions
 from .store import Store
 
 log = logging.getLogger("executor.history")
 
 # A session counts as present if Jellyfin saw it within this many seconds.
 ACTIVE = 300
+# Plays are kept for the yearly recap, longer than sightings.
+PLAYS_DAYS = 400
 
 
 class MediaHistory:
@@ -82,7 +84,9 @@ class MediaHistory:
             self.user_names = await self.jellyfin.users()
             self._users_loaded = now
         last_id = int(self.store.get_state("activity_last_id") or 0)
-        entries = await self.jellyfin.activity_since(last_id)
+        last_play = int(self.store.get_state("plays_last_id") or 0)
+        raw = await self.jellyfin.entries_since(min(last_id, last_play))
+        entries = [e for e in (parse_activity(i) for i in raw if (i.get("Id") or 0) > last_id) if e]
         cutoff = now - self.keep_days * 86400
         for entry in entries:
             ip = public_ip(entry["ip"])
@@ -90,14 +94,45 @@ class MediaHistory:
                 name = self.user_names.get(entry["user_id"], "Unknown")
                 self.store.record(user_id=entry["user_id"], user_name=name, ip=ip, when=entry["when"],
                                   source="log", device=entry["device"], geo=self.locate(ip, name, entry["device"]))
-        if entries:
-            self.store.set_state("activity_last_id", str(entries[-1]["id"]))
-            log.info("imported %d activity log entries", len(entries))
+        if raw:
+            newest = str(raw[-1].get("Id") or 0)
+            self.store.set_state("activity_last_id", newest)
+            if entries:
+                log.info("imported %d activity log entries", len(entries))
+        await self._import_plays(raw, last_play, now)
         if now - self._purged > 86400:
             removed = self.store.purge(self.keep_days, now)
             self._purged = now
             if removed:
                 log.info("purged %d sightings older than %d days", removed, self.keep_days)
+
+    async def _import_plays(self, raw: list[dict], last_play: int, now: float) -> None:
+        """What was played and for how long, from the log's playback starts and stops."""
+        assert self.store is not None
+        plays = [p for p in (parse_playback(i) for i in raw if (i.get("Id") or 0) > last_play) if p]
+        cutoff = now - PLAYS_DAYS * 86400
+        for play in plays:
+            if play["when"] < cutoff:
+                continue
+            if play["event"] == "start":
+                self.store.start_play(play_id=play["id"], user_id=play["user_id"],
+                                      user_name=self.user_names.get(play["user_id"], "Unknown"),
+                                      item_id=play["item_id"], label=play["label"], device=play["device"],
+                                      when=play["when"])
+            else:
+                self.store.stop_play(user_id=play["user_id"], item_id=play["item_id"], device=play["device"],
+                                     when=play["when"])
+        if raw:
+            self.store.set_state("plays_last_id", str(raw[-1].get("Id") or 0))
+        if plays:
+            log.info("imported %d playback log entries", len(plays))
+        unknown = self.store.unknown_items()
+        if unknown:
+            found = await self.jellyfin.items(unknown)
+            known = {item["id"] for item in found}
+            # Deleted items stay unknown; remember them so they are not asked for again.
+            found += [{"id": i, "title": ""} for i in unknown if i not in known]
+            self.store.save_items(found)
 
     async def _check_home(self, now: float) -> None:
         """Learn the server's public address, so sessions from home are placed at home."""

@@ -1,8 +1,11 @@
 import { Globe, ShieldCheck } from 'lucide-react'
 import type { Bandwidth, Certificate, Edge as EdgeData } from '../api'
 import { ago } from '../format'
+import { useApp } from '../state'
+import { AttachedActions } from './ActionKit'
+import { Empty, Facts, SourceNote } from './ui'
 
-function gb(value: number | null): string {
+export function gb(value: number | null): string {
   if (value === null) return '—'
   return value >= 1000 ? `${(value / 1000).toFixed(2)} TB` : `${Math.round(value)} GB`
 }
@@ -12,7 +15,7 @@ function tone(pct: number | null) {
   return pct >= 90 ? 'down' : pct >= 70 ? 'degraded' : 'up'
 }
 
-function DailyBars({ daily, monthStart }: { daily: Bandwidth['daily']; monthStart: number | null }) {
+export function DailyBars({ daily, monthStart }: { daily: Bandwidth['daily']; monthStart: number | null }) {
   if (!monthStart) return null
   // One slot per day of the current month, so the chart fills in as the month goes.
   const first = new Date(monthStart * 1000)
@@ -74,6 +77,7 @@ function DailyBars({ daily, monthStart }: { daily: Bandwidth['daily']; monthStar
 }
 
 function BandwidthCard({ bw, error, now }: { bw: Bandwidth | null; error: string | null; now: number }) {
+  const { open } = useApp()
   if (!bw) {
     return (
       <article className="edge-card card">
@@ -90,7 +94,7 @@ function BandwidthCard({ bw, error, now }: { bw: Bandwidth | null; error: string
     bw.allowance_now_gb !== null && bw.allowance_month_gb ? (bw.allowance_now_gb / bw.allowance_month_gb) * 100 : null
   const fetchedMs = bw.fetched_at ? bw.fetched_at * 1000 : null
   return (
-    <article className="edge-card card">
+    <article className="edge-card card clickable" onClick={() => open('bandwidth', '')} role="button" tabIndex={0}>
       <div className="edge-head">
         <Globe size={16} />
         <h3>VPS bandwidth</h3>
@@ -158,6 +162,7 @@ function BandwidthCard({ bw, error, now }: { bw: Bandwidth | null; error: string
 }
 
 function CertificateCard({ certs }: { certs: Certificate[] }) {
+  const { open } = useApp()
   return (
     <article className="edge-card card">
       <div className="edge-head">
@@ -168,7 +173,7 @@ function CertificateCard({ certs }: { certs: Certificate[] }) {
       {certs.map((c) => {
         const t = c.days_left === null ? 'down' : c.days_left < 7 ? 'down' : c.days_left < 20 ? 'degraded' : 'up'
         return (
-          <div key={c.host} className="cert">
+          <button type="button" key={c.host} className="cert row-btn" onClick={() => open('certificate', c.host)}>
             <div className={`cert-days tone-${t}`}>
               <span className="num">{c.days_left === null ? '—' : Math.floor(c.days_left)}</span>
               <span className="small">days</span>
@@ -181,14 +186,15 @@ function CertificateCard({ certs }: { certs: Certificate[] }) {
                   : `Expires ${new Date(c.expires!).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })} · ${c.issuer ?? ''}`}
               </span>
             </div>
-          </div>
+          </button>
         )
       })}
     </article>
   )
 }
 
-export function Edge({ edge, now }: { edge: EdgeData; now: number }) {
+export function Edge({ edge }: { edge: EdgeData }) {
+  const { now } = useApp()
   return (
     <section className="section">
       <div className="section-head">
@@ -198,6 +204,61 @@ export function Edge({ edge, now }: { edge: EdgeData; now: number }) {
         <BandwidthCard bw={edge.bandwidth} error={edge.bandwidth_error} now={now} />
         <CertificateCard certs={edge.certificates} />
       </div>
+      <AttachedActions target="edge" />
     </section>
+  )
+}
+
+export function BandwidthDrawer() {
+  const { snapshot } = useApp()
+  const bw = snapshot?.edge?.bandwidth
+  if (!bw) return <Empty>{snapshot?.edge?.bandwidth_error ?? 'No bandwidth figures yet.'}</Empty>
+  return (
+    <div>
+      <div className="drawer-kicker">Edge · {bw.instance?.label ?? 'VPS'}</div>
+      <h3 className="drawer-title">VPS bandwidth</h3>
+      <DailyBars daily={bw.daily} monthStart={bw.month_start} />
+      <Facts
+        items={[
+          ['Out this month', gb(bw.out_gb)],
+          ['In this month', `${gb(bw.in_gb)} (free)`],
+          ['Projected', bw.projected_out_gb != null ? `${gb(bw.projected_out_gb)} (${Math.round(bw.projected_pct ?? 0)}%)` : null],
+          ['Allowance', `${gb(bw.allowance_now_gb)} accrued of ${gb(bw.allowance_month_gb)}`],
+          ['Month elapsed', bw.elapsed_pct != null ? `${Math.round(bw.elapsed_pct)}%` : null],
+          ['Overage', bw.overage_cost ? `$${bw.overage_cost} (${gb(bw.overage_gb)})` : 'none'],
+          ['Last month', bw.previous ? `${gb(bw.previous.out_gb)} out · ${gb(bw.previous.in_gb)} in` : null],
+          ['Plan', [bw.instance?.plan, bw.instance?.region].filter(Boolean).join(' · ') || null],
+        ]}
+      />
+      {Object.keys(bw.errors).length > 0 && (
+        <p className="small warn-text">
+          Partial data: {Object.entries(bw.errors).map(([k, v]) => `${k} ${v}`).join(', ')}
+        </p>
+      )}
+      <AttachedActions target="edge" />
+      <SourceNote source="Vultr API, fetched by the VPS" at={bw.fetched_at} />
+    </div>
+  )
+}
+
+export function CertificateDrawer({ host }: { host: string }) {
+  const { snapshot } = useApp()
+  const cert = snapshot?.edge?.certificates.find((c) => c.host === host)
+  if (!cert) return <Empty>No certificate check for {host}.</Empty>
+  return (
+    <div>
+      <div className="drawer-kicker">Edge · TLS certificate</div>
+      <h3 className="drawer-title mono">{cert.host}</h3>
+      <Facts
+        items={[
+          ['Days left', cert.days_left != null ? String(Math.floor(cert.days_left)) : null],
+          ['Expires', cert.expires ? new Date(cert.expires).toLocaleString() : null],
+          ['Issuer', cert.issuer],
+          ['Problem', cert.error],
+        ]}
+      />
+      <p className="small muted">Checked hourly by connecting to the host, as a visitor would.</p>
+      <SourceNote source="TLS handshake from the NAS" />
+    </div>
   )
 }

@@ -2,6 +2,8 @@
 
 FROM node:22-alpine AS web
 WORKDIR /web
+# curl fetches the map's fonts and icons (scripts/map-assets.sh) during the build.
+RUN apk add --no-cache curl
 COPY web/package.json web/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY web/ ./

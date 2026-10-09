@@ -91,17 +91,24 @@ def main() -> None:
             else:
                 logging.getLogger("executor").warning("storage configured but AWS keys not set; "
                                                       "showing Duplicati's figures only")
+        from .store import Store
+
+        data = Path(os.environ.get("EXECUTOR_WEB_DATA", "/data"))
+        ledger = None
+        if data.is_dir() and os.access(data, os.W_OK):
+            ledger = Store(data / "executor.db")
+        else:
+            logging.getLogger("executor").warning(
+                "no writable data folder at %s: no event log, uptime or long-term history", data)
         history = None
         if jellyfin and config.integrations.jellyfin:
             from .history import MediaHistory
             from .sources.geo import Corrections, DbIpLite, GeoLite2, Locator, MmdbSource
-            from .store import Store
 
             settings = config.integrations.jellyfin
-            data = Path(os.environ.get("EXECUTOR_WEB_DATA", "/data"))
             store = geo = None
-            if settings.history_days and data.is_dir() and os.access(data, os.W_OK):
-                store = Store(data / "executor.db")
+            if settings.history_days and ledger:
+                store = ledger
                 folder = data / "geo"
                 # Earlier versions kept DB-IP's month in a file called "month".
                 if (folder / "month").exists() and not (folder / f"{DbIpLite.file}.version").exists():
@@ -121,8 +128,10 @@ def main() -> None:
                 logging.getLogger("executor").warning(
                     "location history off: %s is missing or not writable", data)
             history = MediaHistory(jellyfin, store, geo, settings.history_days, settings.home_ip_url)
+        tiles = Path(os.environ.get("EXECUTOR_TILES", "/tiles"))
         app = create_web_app(config, runner, static, beszel=beszel, jellyfin=jellyfin, duplicati=duplicati,
-                             media=media, cloudwatch=cloudwatch, history=history)
+                             media=media, cloudwatch=cloudwatch, history=history, store=ledger,
+                             tiles_dir=tiles if tiles.is_dir() else None)
         uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "1977")), **common)
 
     elif role == "runner":

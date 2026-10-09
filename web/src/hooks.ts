@@ -62,7 +62,6 @@ export function usePresentation(): [boolean, () => void] {
     }
   })
   useEffect(() => {
-    document.documentElement.classList.toggle('presenting', on)
     try {
       window.localStorage.setItem('executor.presenting', on ? '1' : '0')
     } catch {
@@ -70,4 +69,17 @@ export function usePresentation(): [boolean, () => void] {
     }
   }, [on])
   return [on, () => setOn((v) => !v)]
+}
+
+/** Whether the screen is phone sized. */
+export function useNarrow(width = 760): boolean {
+  const query = `(max-width: ${width}px)`
+  const [narrow, setNarrow] = useState(() => window.matchMedia(query).matches)
+  useEffect(() => {
+    const media = window.matchMedia(query)
+    const update = () => setNarrow(media.matches)
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [query])
+  return narrow
 }

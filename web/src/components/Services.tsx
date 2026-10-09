@@ -2,6 +2,7 @@ import { Briefcase, Download, ExternalLink, Film, Globe, Image, Layers, Network,
 import { useMemo, useState } from 'react'
 import type { ContainerState, ServiceStatus } from '../api'
 import { latency } from '../format'
+import { useApp } from '../state'
 import { StatusDot } from './StatusDot'
 
 const GROUP_ICONS: Record<string, typeof Film> = {
@@ -14,22 +15,30 @@ const GROUP_ICONS: Record<string, typeof Film> = {
   'Public edge': Globe,
 }
 
-function containerTone(c: ContainerState) {
+export function containerTone(c: ContainerState) {
   if (c.state !== 'running') return 'down'
   if (c.health === 'unhealthy') return 'down'
   if (c.health === 'starting') return 'degraded'
   return 'up'
 }
 
-function hue(name: string) {
+export function hue(name: string) {
   let h = 0
   for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % 360
   return h
 }
 
 function Tile({ service, index }: { service: ServiceStatus; index: number }) {
-  const body = (
-    <>
+  const { open } = useApp()
+  return (
+    <div
+      className={`tile card clickable status-${service.status}`}
+      style={{ ['--i' as string]: index }}
+      role="button"
+      tabIndex={0}
+      onClick={() => open('service', service.id)}
+      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), open('service', service.id))}
+    >
       <div className="tile-top">
         <span className="monogram" style={{ ['--h' as string]: hue(service.name) }}>
           {service.name.slice(0, 2)}
@@ -54,18 +63,19 @@ function Tile({ service, index }: { service: ServiceStatus; index: number }) {
           ))}
         </ul>
       )}
-      {service.url && <ExternalLink className="tile-link" size={14} aria-hidden="true" />}
-    </>
-  )
-  const className = `tile card status-${service.status}`
-  const style = { ['--i' as string]: index }
-  return service.url ? (
-    <a className={className} style={style} href={service.url} target="_blank" rel="noopener noreferrer">
-      {body}
-    </a>
-  ) : (
-    <div className={className} style={style}>
-      {body}
+      {service.url && (
+        <a
+          className="tile-link"
+          href={service.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          aria-label={`Open ${service.name}`}
+          title={`Open ${service.name}`}
+        >
+          <ExternalLink size={14} />
+        </a>
+      )}
     </div>
   )
 }

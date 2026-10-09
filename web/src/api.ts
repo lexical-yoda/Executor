@@ -104,6 +104,8 @@ export interface Snapshot {
   }
   runner: { ok: boolean; error: string | null }
   beszel: { configured: boolean; ok: boolean; error: string | null }
+  /** Whether Executor keeps its own history (events, uptime, long-term stats, plays). */
+  ledger: boolean
   edge: Edge | null
   backups: Backups | null
   media: Media | null
@@ -208,6 +210,7 @@ export interface StorageStatus {
     bytes: number | null
     by_type: Record<string, number>
     objects: number | null
+    growth_7d: number | null
     growth_30d: number | null
     growth_90d: number | null
     growth_total: number | null
@@ -280,6 +283,8 @@ export interface Media {
       error: string | null
       down_bps?: number
       up_bps?: number
+      down_session_bytes?: number
+      up_session_bytes?: number
       connection?: string
       torrents?: number
       downloading?: number
@@ -338,8 +343,16 @@ export interface JellyfinStatus {
     sightings: number
     error: string | null
   }
-  hub: { label: string; lat: number; lon: number } | null
-  origin: { label: string; lat: number; lon: number } | null
+  hub: MapAnchor | null
+  origin: MapAnchor | null
+}
+
+/** A fixed point on the map (home, the relay), optionally tied to a machine. */
+export interface MapAnchor {
+  label: string
+  lat: number
+  lon: number
+  machine?: string | null
 }
 
 export interface MediaUser {
@@ -371,7 +384,7 @@ export interface Sighting extends Partial<Place> {
   last_seen: number
 }
 
-export type HistoryRange = '1h' | '12h' | '24h' | '7d' | '30d'
+export type HistoryRange = '1h' | '12h' | '24h' | '7d' | '30d' | '90d' | '1y'
 
 export interface MachineHistory {
   machine: string
@@ -395,6 +408,8 @@ export interface ActionInfo {
   confirm: string
   danger: 'low' | 'medium' | 'high'
   show_streams: boolean
+  group: string | null
+  attach: string[]
   steps: string[]
 }
 
@@ -439,6 +454,81 @@ export interface RunDetail extends RunSummary {
   next_offset: number
 }
 
+export type EventLevel = 'good' | 'bad' | 'warn' | 'info'
+
+export interface LogEvent {
+  id: number
+  ts: number
+  kind: string
+  level: EventLevel
+  title: string
+  detail: string | null
+  /** A person (shown blurred in presentation mode). */
+  actor: string | null
+  /** What the event is about, as "kind:id", for opening its details. */
+  ref: string | null
+}
+
+export interface CheckBucket {
+  t: number
+  up: number
+  degraded: number
+  down: number
+  ms: number | null
+}
+
+export interface ServiceHistory {
+  service: string
+  hours: number
+  bucket_s: number
+  buckets: CheckBucket[]
+  uptime: number | null
+}
+
+export interface RecapTitle {
+  title: string
+  kind: string | null
+  hours: number
+  plays: number
+  viewers: number
+}
+
+export interface Recap {
+  days: number
+  from: number
+  to: number
+  media: {
+    plays: number
+    hours: number
+    viewers: number
+    titles: number
+    countries: number
+    top_titles: RecapTitle[]
+    top_viewers: { id: string; name: string; hours: number; plays: number }[]
+    top_places: { city: string; country_code: string | null; plays: number; viewers: number }[]
+    prime_hour: number | null
+    longest: { user_id: string; name: string; title: string; episode: string | null; hours: number } | null
+  }
+  previous: { plays: number; hours: number; viewers: number; titles: number }
+  downloads: { bytes: number; bytes_before: number; completed: number; failed: number; requests: number }
+  reliability: {
+    uptime: number | null
+    worst: { service: string; uptime: number } | null
+    incidents: number
+    machine_outages: number
+    restarts: number
+  }
+  backups: { succeeded: number; failed: number; warnings: number; glacier_growth: number | null }
+  actions: { succeeded: number; failed: number }
+  machines: Record<string, Record<string, number | null>>
+}
+
+export interface Tileset {
+  name: string
+  url: string
+  bytes: number
+}
+
 export class ApiError extends Error {
   status: number
   constructor(status: number, message: string) {
@@ -480,6 +570,12 @@ export const api = {
   mediaTrail: (user: string, days: number) =>
     request<{ user: string; sightings: Sighting[] }>(`/api/media/trail?user=${encodeURIComponent(user)}&days=${days}`),
   runs: () => request<{ busy: string | null; runs: RunSummary[] }>('/api/runs'),
+  events: (before?: number, limit = 50) =>
+    request<{ events: LogEvent[] }>(`/api/events?limit=${limit}${before ? `&before=${before}` : ''}`),
+  serviceHistory: (id: string, hours: number) =>
+    request<ServiceHistory>(`/api/services/${encodeURIComponent(id)}/history?hours=${hours}`),
+  recap: (days = 7) => request<Recap>(`/api/recap?days=${days}`),
+  tilesets: () => request<{ tilesets: Tileset[] }>('/api/map/tilesets'),
   run: (id: string, offset: number) => request<RunDetail>(`/api/runs/${id}?offset=${offset}`),
   start: (id: string) =>
     request<RunDetail>(`/api/actions/${encodeURIComponent(id)}/run`, {

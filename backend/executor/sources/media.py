@@ -213,6 +213,9 @@ class QBittorrent:
         return {
             "down_bps": transfer.get("dl_info_speed"),
             "up_bps": transfer.get("up_info_speed"),
+            # Bytes moved since qBittorrent started; Executor turns the growth into daily totals.
+            "down_session_bytes": transfer.get("dl_info_data"),
+            "up_session_bytes": transfer.get("up_info_data"),
             "connection": transfer.get("connection_status"),
             "torrents": len(torrents),
             "downloading": sum(s in DOWNLOADING for s in states),

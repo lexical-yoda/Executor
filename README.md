@@ -1,8 +1,9 @@
 # Executor
 
-A single-page command dashboard for a self-hosted homelab. One page shows every
-machine and service with live status, and runs predefined actions with a click,
-such as a full reset of a VPN download stack.
+A command dashboard for a self-hosted homelab. It shows every machine and
+service with live status, who is watching the media server and from where on a
+live map, backups and off-site storage, and runs predefined actions, such as a
+full reset of a VPN download stack.
 
 It is designed to be reached only over a private network such as WireGuard,
 and it has no login. Everything in the security section follows from that.
@@ -26,6 +27,26 @@ One Docker image runs in two roles, as two containers in one stack:
 
   Start from `deploy/config/config.example.yaml` and
   `deploy/config/actions.example.yaml`.
+
+### The page
+
+Five decks, switched by tabs (a bottom bar on phones) or the keys 1 to 5:
+
+| Deck | Shows |
+|---|---|
+| Bridge | The map with live streams, and tiles summarising every other deck, the event log and the weekly recap |
+| Engineering | Machines, the edge (bandwidth and certificates) and services |
+| Holonet | The map explorer, now playing, requests, downloads, places and viewers |
+| Archives | Backup jobs, file backups and off-site storage |
+| Armory | Every action, grouped, and the recent runs |
+
+A status line and a row of alerts stay at the top on every deck. Every card,
+row, map marker and alert opens a side drawer with the details and where the
+figures come from; the address bar keeps the deck and the open drawer, so a
+refresh or a bookmark lands in the same place. The eye button blurs names
+(presentation mode, `p`), and the play button starts a demo tour that cycles
+the decks with names blurred until someone touches the page. Numbers glide to
+new values rather than jumping, and nothing flashes on refresh.
 
 ### Status
 
@@ -118,20 +139,62 @@ folder, Executor also keeps a location history:
 - `GET /api/media/users`, `/api/media/places` and `/api/media/trail` serve
   the history to the page.
 
-**Audience map.** A flat SVG map (d3-geo) drawn from bundled Natural Earth
-country shapes, so no map tiles are fetched; the more detailed 1:50m shapes
-load only when the map zooms into a region. Two views:
+**The map.** A vector map (MapLibre GL) of country and state borders, cities,
+towns, roads and water, drawn from map tile archives that Executor serves
+itself (see "Map tiles"), so the page loads nothing from other sites. It pans,
+zooms and pinches; zoom buttons, "fit everything" and "fly home" sit in the
+corner. Dots flow from `origin` (where the media server is) to `hub` (the
+relay, if any) and on to each viewer; with `machine` set on them, the two
+anchors are ringed with that machine's health. Two views:
 
-- **Live** fits the stream route and whoever is watching. Dots flow from
-  `origin` (where the media server is) to `hub` (the relay, if any) and on to
-  each viewer, with the busiest places named beside their dots.
+- **Live** fits the stream route and whoever is watching.
 - **All places** shows every place in the chosen range (7, 30 or 90 days),
-  sized by how often users connected from there.
+  clustered when zoomed out, with the busiest places named.
 
-Click a viewer's line or dot to see who is watching what, from where, on
-which app, and whether the server is transcoding; click the origin-to-hub
-line for every stream on it; click a place for everyone seen there. Picking a
-user draws their path and lists where and on which device they connected.
+Hover anything for a summary and click it for details: a viewer or their line
+(who, what, from where, on which app, transcoding or not), the route, a
+place (everyone seen there), or an anchor (its machine). Picking a viewer
+draws their numbered path, which can be replayed step by step.
+
+### Map tiles
+
+The map reads `.pmtiles` archives from the stack's `tiles/` folder (mounted
+read-only at `/tiles`): `world.pmtiles` for the whole world, and optionally
+more archives with street-level detail for a region, drawn on top where they
+have tiles. Make them once with the `pmtiles` tool from the Protomaps daily
+build (only the requested parts are downloaded):
+
+```bash
+pmtiles extract https://build.protomaps.com/<YYYYMMDD>.pmtiles world.pmtiles --maxzoom=10
+pmtiles extract https://build.protomaps.com/<YYYYMMDD>.pmtiles region.pmtiles --bbox=<w,s,e,n> --minzoom=11 --maxzoom=14
+```
+
+The world to zoom 10 is about 4 GB; a country-sized region from zoom 11 to 14
+is a few GB more. Fonts and icons come from Protomaps' basemaps-assets at a
+pinned commit, fetched when the image is built. Map data © OpenStreetMap
+contributors, basemap by Protomaps.
+
+### History, uptime and the event log
+
+With a writable `EXECUTOR_WEB_DATA` folder, Executor keeps its own records in
+one SQLite file:
+
+- **Event log:** services and machines going down and recovering, containers
+  stopping or restarting, backups finishing, downloads grabbed and finished,
+  new requests, streams starting, actions run and certificates renewed. A
+  service change counts once it holds for two checks. Kept 180 days.
+- **Uptime:** every service check in five-minute buckets, shown as uptime bars
+  in each service's details. Kept 35 days.
+- **Machine history:** hourly averages, seeded from what Beszel still keeps
+  (about a month), so machine charts reach back a year (90-day and 1-year
+  ranges).
+- **Plays:** what was played, by whom and for how long, from Jellyfin's
+  activity log, and the bytes qBittorrent downloads each day, for the
+  weekly recap (hours streamed, top titles, viewers and cities, downloads,
+  uptime, incidents and Glacier growth, against the week before).
+
+Without the folder the event log is kept in memory only, and the recap,
+uptime bars and long ranges are unavailable.
 
 **Presentation mode** (the eye button in the header) blurs every username,
 and device names (which often contain a person's name), for showing the
@@ -189,8 +252,16 @@ an action waits for something, such as a host coming back after a reboot.
 Only one action runs at a time. Every run, with its full output, is appended
 to `runs.jsonl` in the runner's data directory and listed under "Recent runs".
 
+Launching takes a press and hold: the ring fills for 0.7, 1.4 or 2.6 seconds
+by `danger` (low, medium, high), and letting go early cancels. The run then
+shows as a pipeline whose steps light up as they go, with their times and the
+output. `group` sets the action's heading in the Armory, and `attach` also
+offers it on the cards it concerns (machine or service ids, or the panels
+`downloads`, `requests`, `now-playing`, `backups`, `edge` and
+`backup-<Duplicati job id>`).
+
 An action with `show_streams: true` lists the media server's active streams
-in its confirm dialog, so you can see who would be interrupted. This needs the
+in its briefing, so you can see who would be interrupted. This needs the
 `jellyfin` integration in `config.yaml` and `JELLYFIN_API_KEY` in `.env`.
 
 Variables that `http` steps read are removed from the environment of every
@@ -282,9 +353,11 @@ The image is built by GitHub Actions on every push to `main` and published to
    For `ssh` steps, create `ssh/` beside them with a key pair
    (`ssh-keygen -t ed25519 -N "" -f ssh/id_ed25519`) and a `known_hosts` file
    holding each target's host key, checked against the target itself.
-4. Run `docker compose up -d` in that directory, or deploy it with your stack
+4. For the map, put the tile archives in `tiles/` beside the configs (see
+   "Map tiles").
+5. Run `docker compose up -d` in that directory, or deploy it with your stack
    manager.
-5. Open `http://<allowed host>:1977` from an allowed device.
+6. Open `http://<allowed host>:1977` from an allowed device.
 
 To update, pull the new image and recreate the stack. Editing `config.yaml` or
 `actions.yaml` needs only a restart of the matching container.
@@ -304,7 +377,11 @@ EXECUTOR_CONFIG=../dev/config.yaml RUNNER_URL=http://127.0.0.1:8001 EXECUTOR_STA
 Then open `http://127.0.0.1:1977`. For live frontend reloading, also run
 `npm run dev` in `web/` and open the Vite URL; it proxies `/api` to port 1977.
 To work on the frontend against a deployed instance instead, start it with
-`EXECUTOR_API=http://<executor host>:1977 npm run dev` from an allowed device.
+`EXECUTOR_API=http://<executor host>:1977 npm run dev` from an allowed device;
+adding `EXECUTOR_LOCAL_API=http://127.0.0.1:1977` serves the history endpoints
+and map tiles from the local backend. For a local map, extract small archives
+(for example `--maxzoom=6`) into `dev/tiles/` and start the web process with
+`EXECUTOR_TILES=../dev/tiles`.
 Without a Docker socket the page notes that container states are unavailable,
 which is expected. `dev/actions.yaml` holds two harmless demo actions.
 
@@ -318,6 +395,9 @@ Tests: `cd backend && ../.venv/bin/python -m pytest -q`. Tests that check a real
    bandwidth and certificate expiry (done); more actions, with ssh and http
    steps and an active-stream warning (done); backups panel (done); media
    panels (done); S3 storage size and growth (done).
-3. **Phase 3:** now playing, location history, presentation mode, and a
-   globe of locations on desktop and a flat map on phones, with a per-user
-   timeline (done).
+3. **Phase 3:** now playing, location history, presentation mode, and a map
+   of locations with a per-user timeline (done).
+4. **Phase 4:** decks instead of one long page, drawers for every detail, a
+   self-hosted vector map, hold-to-launch actions with a live pipeline, the
+   event log, uptime history, a year of machine history, the weekly recap and
+   the demo tour (done).

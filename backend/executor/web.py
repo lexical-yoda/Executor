@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import mimetypes
 import re
 import time
 from contextlib import asynccontextmanager
@@ -14,23 +15,33 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import Config
 from .history import MediaHistory
-from .monitor import Monitor, RunnerClient
+from .monitor import LONG_RANGES, Monitor, RunnerClient
+from .recap import build_recap
 from .security import Guard
 from .sources.aws import CloudWatchS3
 from .sources.beszel import RANGES, Beszel
 from .sources.duplicati import Duplicati
 from .sources.jellyfin import Jellyfin
 from .sources.media import MediaSources
+from .store import Store
 
 log = logging.getLogger("executor.web")
+
+# The map's worker is an ES module and its fonts are protobuf; older Pythons know neither.
+mimetypes.add_type("text/javascript", ".mjs")
+mimetypes.add_type("application/x-protobuf", ".pbf")
 
 
 def create_web_app(config: Config, runner: RunnerClient | None, static_dir: Path | None,
                    start_monitor: bool = True, beszel: Beszel | None = None,
                    jellyfin: Jellyfin | None = None, duplicati: Duplicati | None = None,
                    media: MediaSources | None = None, cloudwatch: CloudWatchS3 | None = None,
-                   history: MediaHistory | None = None) -> FastAPI:
-    monitor = Monitor(config, runner, beszel, duplicati, media, cloudwatch, history)
+                   history: MediaHistory | None = None, store: Store | None = None,
+                   tiles_dir: Path | None = None) -> FastAPI:
+    store = store or (history.store if history else None)
+    monitor = Monitor(config, runner, beszel, duplicati, media, cloudwatch, history, store)
+    tile_name = re.compile(r"^[a-z0-9][a-z0-9-]{0,40}$")
+    recap_cache: dict[int, tuple[float, dict]] = {}
     user_id_pattern = re.compile(r"^[0-9a-f]{32}$")
     posters: dict[tuple[str, int], tuple[bytes, str]] = {}
     history_cache: dict[tuple[str, str], tuple[float, dict]] = {}
@@ -46,8 +57,8 @@ def create_web_app(config: Config, runner: RunnerClient | None, static_dir: Path
             await runner.close()
         if jellyfin:
             await jellyfin.close()
-        if history and history.store:
-            history.store.close()
+        if store:
+            store.close()
 
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     app.state.monitor = monitor
@@ -76,7 +87,7 @@ def create_web_app(config: Config, runner: RunnerClient | None, static_dir: Path
 
     @app.get("/api/machines/{machine_id}/history")
     async def machine_history(machine_id: str, range: str = "24h") -> dict:  # noqa: A002
-        if range not in RANGES:
+        if range not in RANGES and range not in LONG_RANGES:
             raise HTTPException(400, "Unknown range.")
         key = (machine_id, range)
         cached = history_cache.get(key)
@@ -84,7 +95,7 @@ def create_web_app(config: Config, runner: RunnerClient | None, static_dir: Path
         if cached and now - cached[0] < 60:
             return cached[1]
         try:
-            series = await monitor.history(machine_id, range)
+            series = await monitor.machine_history(machine_id, range)
         except Exception as exc:  # noqa: BLE001
             log.warning("history for %s failed: %s", machine_id, exc)
             raise HTTPException(502, "Stats source unavailable.") from None
@@ -93,6 +104,62 @@ def create_web_app(config: Config, runner: RunnerClient | None, static_dir: Path
         body = {"machine": machine_id, "range": range, **series}
         history_cache[key] = (now, body)
         return body
+
+    def ledger() -> Store:
+        if store is None:
+            raise HTTPException(404, "Executor has no data folder, so it keeps no history.")
+        return store
+
+    @app.get("/api/events")
+    async def events(limit: int = 50, before: int | None = None) -> dict:
+        return {"events": monitor.tracker.recent(max(1, min(limit, 200)), before)}
+
+    @app.get("/api/services/{service_id}/history")
+    async def service_history(service_id: str, hours: int = 24) -> dict:
+        if not any(s.id == service_id for s in config.services):
+            raise HTTPException(404, "No such service.")
+        hours = max(1, min(hours, 720))
+        bucket = 300 if hours <= 24 else 3600 if hours <= 168 else 6 * 3600
+        since = time.time() - hours * 3600
+        buckets = ledger().check_history(service_id, since, bucket)
+        ok = sum(b["up"] + b["degraded"] for b in buckets)
+        total = ok + sum(b["down"] for b in buckets)
+        return {"service": service_id, "hours": hours, "bucket_s": bucket, "buckets": buckets,
+                "uptime": round(ok / total * 100, 3) if total else None}
+
+    @app.get("/api/recap")
+    async def recap(days: int = 7) -> dict:
+        days = max(1, min(days, 90))
+        cached = recap_cache.get(days)
+        now = time.monotonic()
+        if cached and now - cached[0] < 120:
+            return cached[1]
+        backups = monitor.snapshot().get("backups") or {}
+        body = build_recap(ledger(), days=days, storage=backups.get("storage"))
+        recap_cache[days] = (now, body)
+        return body
+
+    @app.get("/api/map/tilesets")
+    async def tilesets() -> dict:
+        """Map tile archives present, the world one first."""
+        found = []
+        if tiles_dir and tiles_dir.is_dir():
+            for file in sorted(tiles_dir.glob("*.pmtiles")):
+                if tile_name.match(file.stem) and file.is_file():
+                    found.append({"name": file.stem, "url": f"/tiles/{file.name}", "bytes": file.stat().st_size})
+        found.sort(key=lambda t: (t["name"] != "world", t["name"]))
+        return {"tilesets": found}
+
+    @app.api_route("/tiles/{name}.pmtiles", methods=["GET", "HEAD"], include_in_schema=False)
+    async def tiles(name: str) -> FileResponse:
+        """One map archive; the map reads it piece by piece with range requests."""
+        if not tiles_dir or not tile_name.match(name):
+            raise HTTPException(404)
+        file = tiles_dir / f"{name}.pmtiles"
+        if not file.is_file():
+            raise HTTPException(404)
+        return FileResponse(file, media_type="application/octet-stream",
+                            headers={"Cache-Control": "private, max-age=3600"})
 
     @app.get("/api/streams")
     async def streams() -> dict:
@@ -190,7 +257,11 @@ def create_web_app(config: Config, runner: RunnerClient | None, static_dir: Path
                 raise HTTPException(404)
             candidate = (static_dir / path).resolve()
             if path and candidate.is_file() and static_dir.resolve() in candidate.parents:
-                return FileResponse(candidate)
+                return FileResponse(candidate, headers={"Cache-Control": "private, max-age=86400"}
+                                    if path.startswith("map/") else None)
+            # Map fonts and icons: a missing one must not come back as the page.
+            if path.startswith(("map/", "tiles/")):
+                raise HTTPException(404)
             return FileResponse(index, headers={"Cache-Control": "no-cache"})
 
     app.add_middleware(Guard, allowed_clients=config.security.allowed_clients,

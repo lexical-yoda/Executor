@@ -1,45 +1,48 @@
-import type { PlaceGroup, Sighting, Watching } from '../api'
+import type { MapAnchor, PlaceGroup, Sighting, Status, Watching } from '../api'
 
 // Types and helpers the rest of the page may import without pulling in the
-// map data, which loads only with the map itself.
-
-export interface MapPoint {
-  label: string
-  lat: number
-  lon: number
-}
+// map engine, which loads only with the map itself.
 
 export type MapMode = 'live' | 'all'
-
-/** What was clicked on the map: a place, one viewer's stream, or the home-to-relay route. */
-export type MapSelection = { kind: 'place'; place: PlaceGroup } | { kind: 'stream'; key: string } | { kind: 'route' }
 
 /** A stable key for a live stream across refreshes. */
 export function streamKey(s: Watching): string {
   return `${s.user_id ?? s.user}|${s.device ?? ''}|${s.client ?? ''}`
 }
 
-export interface MapProps {
+export interface MapViewProps {
+  /** hero: the bridge's centerpiece; full: the Holonet deck's explorer. */
+  variant: 'hero' | 'full'
   mode: MapMode
-  places: PlaceGroup[]
+  origin: MapAnchor | null
+  hub: MapAnchor | null
+  /** Health of the machines at the anchors, by machine id. */
+  nodeStatus: Record<string, Status>
   live: Watching[]
-  origin: MapPoint | null
-  hub: MapPoint | null
+  places: PlaceGroup[]
   trail: Sighting[]
-  now: number
-  selected: MapSelection | null
-  onSelect: (selection: MapSelection | null) => void
+  /** Index into the trail's hops being replayed, if any. */
+  replay: number | null
+  selected: string | null
+  /** Open details: ("stream", key), ("place", "lat,lon"), ("route", ""), ("machine", id), ("user", id). */
+  onOpen: (kind: string, id: string) => void
+  /** Attract mode moves the camera on its own. */
+  tour?: boolean
 }
 
 /** Distinct consecutive places in a user's trail, oldest first. */
-export function trailHops(trail: Sighting[]): { lat: number; lon: number }[] {
-  const hops: { lat: number; lon: number }[] = []
+export function trailHops(trail: Sighting[]): { lat: number; lon: number; sighting: Sighting }[] {
+  const hops: { lat: number; lon: number; sighting: Sighting }[] = []
   for (const s of trail) {
     if (s.lat == null || s.lon == null) continue
     const last = hops[hops.length - 1]
-    if (!last || last.lat !== s.lat || last.lon !== s.lon) hops.push({ lat: s.lat, lon: s.lon })
+    if (!last || last.lat !== s.lat || last.lon !== s.lon) hops.push({ lat: s.lat, lon: s.lon, sighting: s })
   }
   return hops
+}
+
+export function placeKey(p: { lat: number; lon: number }): string {
+  return `${p.lat},${p.lon}`
 }
 
 export function recent(place: PlaceGroup, now: number): boolean {

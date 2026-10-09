@@ -104,6 +104,7 @@ def summarize_bucket(sizes: dict[str, list[tuple[float, float]]], objects: list[
         "bytes": total,
         "by_type": {k: round(v) for k, v in by_day[days[-1]].items()} if days else {},
         "objects": round(objects[-1][1]) if objects else None,
+        "growth_7d": growth(7),
         "growth_30d": growth(30),
         "growth_90d": growth(90),
         # Until there are 30 days of history.

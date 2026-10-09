@@ -4,6 +4,7 @@ deploy/.env
 deploy/config/config.yaml
 deploy/config/actions.yaml
 dev/config.yaml
+dev/tiles/
 *.local.md
 
 # Build and tooling
@@ -16,3 +17,4 @@ web/dist/
 
 # Private: scripts installed on a real VPS (see PLAN.local.md).
 deploy/vps/
+web/public/map/

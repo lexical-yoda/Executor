@@ -254,6 +254,8 @@ def test_history_endpoints(tmp_path):
     snapshot = c.get("/api/status").json()["jellyfin"]
     assert snapshot["hub"]["label"] == "Hub" and snapshot["origin"]["label"] == "Home"
     assert snapshot["history"]["enabled"] is True
+    # Machine charts still answer when media history is on (the two once shared a name).
+    assert c.get("/api/machines/nas/history?range=24h").status_code == 404
 
     plain = create_web_app(CONFIG, runner=None, static_dir=None, start_monitor=False)
     c = TestClient(plain, base_url="http://10.8.0.10:1977", client=("10.8.0.2", 5000))

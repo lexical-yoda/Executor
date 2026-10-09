@@ -11,6 +11,7 @@ import httpx
 
 from .checks import Probe, http_probe, local_stats, ping, tcp_probe
 from .config import Config, Machine, Service
+from .events import Tracker
 from .history import MediaHistory
 from .sources.aws import CloudWatchS3
 from .sources.backups import evaluate_files
@@ -18,8 +19,23 @@ from .sources.beszel import Beszel, summarize, to_series
 from .sources.duplicati import Duplicati
 from .sources.edge import check_certificate, fetch_bandwidth
 from .sources.media import MediaSources
+from .store import Store
 
 log = logging.getLogger("executor.monitor")
+
+# Chart ranges longer than the stats source keeps, served from Executor's own
+# hourly averages: range -> (seconds, bucket seconds).
+LONG_RANGES: dict[str, tuple[int, int]] = {"90d": (90 * 86400, 6 * 3600), "1y": (365 * 86400, 86400)}
+
+
+def hourly_sample(stats: dict) -> dict:
+    """The figures from a machine summary that hourly history keeps."""
+    gpu = (stats.get("gpus") or [{}])[0]
+    values = {"cpu": stats.get("cpu_pct"), "mem": stats.get("mem_pct"), "disk": stats.get("disk_pct"),
+              "net_tx": stats.get("net_tx_bps"), "net_rx": stats.get("net_rx_bps"), "cpu_temp": stats.get("cpu_temp"),
+              "gpu": gpu.get("util_pct"), "gpu_temp": stats.get("gpu_temp"),
+              "pools": {p["name"]: p["pct"] for p in stats.get("pools") or [] if p.get("pct") is not None}}
+    return {k: v for k, v in values.items() if v is not None}
 
 
 class RunnerClient:
@@ -78,9 +94,13 @@ class Monitor:
     def __init__(self, config: Config, runner: RunnerClient | None,
                  beszel: Beszel | None = None, duplicati: Duplicati | None = None,
                  media: MediaSources | None = None, cloudwatch: CloudWatchS3 | None = None,
-                 history: MediaHistory | None = None) -> None:
+                 history: MediaHistory | None = None, store: Store | None = None) -> None:
         self.config = config
         self.history = history
+        self.store = store
+        self.tracker = Tracker(store)
+        self._download_bytes: float | None = None
+        self._backfilled: set[str] = set()
         self.watching: list[dict] = []
         self.watching_error: str | None = None
         self.watching_checked: float | None = None
@@ -150,6 +170,11 @@ class Monitor:
                 asyncio.create_task(self._loop(self.poll_beszel, settings.stats_interval)),
                 asyncio.create_task(self._loop(self.poll_sparklines, 60)),
             ]
+        if self.runner:
+            self._tasks.append(asyncio.create_task(self._loop(self.poll_runs, 10)))
+        if self.store:
+            self._tasks.append(asyncio.create_task(self._loop(self.upkeep, 6 * 3600)))
+            self.tracker.emit("system", "info", "Executor came online")
 
     async def stop(self) -> None:
         for task in self._tasks:
@@ -188,6 +213,30 @@ class Monitor:
 
     async def check_services(self) -> None:
         await asyncio.gather(*(self._probe(s) for s in self.config.services))
+        services = [self._service(s) for s in self.config.services]
+        self.tracker.services(services)
+        if self.store:
+            self._safely(self.store.record_checks, [(s["id"], s["status"], s["latency_ms"]) for s in services])
+
+    def _safely(self, func, *args) -> None:
+        """Write to the store without letting a database problem stop a poll."""
+        try:
+            func(*args)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("store write failed (%s): %s", getattr(func, "__name__", "?"), exc)
+
+    async def upkeep(self) -> None:
+        assert self.store is not None
+        self._safely(self.store.purge_ledger)
+
+    async def poll_runs(self) -> None:
+        assert self.runner is not None
+        try:
+            response = await self.runner.request("GET", "/runs")
+            response.raise_for_status()
+        except Exception:  # noqa: BLE001 - the containers poll already reports an unreachable runner
+            return
+        self.tracker.runs(response.json().get("runs", []))
 
     async def _ping(self, machine: Machine) -> None:
         if machine.local or not machine.address:
@@ -199,6 +248,7 @@ class Monitor:
 
     async def check_machines(self) -> None:
         await asyncio.gather(*(self._ping(m) for m in self.config.machines))
+        self.tracker.machines([self._machine(m) for m in self.config.machines])
 
     async def poll_containers(self) -> None:
         if self.runner is None:
@@ -212,6 +262,7 @@ class Monitor:
             return
         self.containers = {c["name"]: c for c in items}
         self.runner_error = None
+        self.tracker.containers(self.containers, {name for s in self.config.services for name in s.containers})
 
     async def poll_edge(self) -> None:
         settings = self.edge_settings
@@ -226,6 +277,7 @@ class Monitor:
         if settings.certificates and time.monotonic() - self._certs_checked > 3600:
             self.certificates = list(await asyncio.gather(*(check_certificate(h) for h in settings.certificates)))
             self._certs_checked = time.monotonic()
+            self.tracker.certificates(self.certificates)
 
     async def poll_backups(self) -> None:
         settings = self.backup_settings
@@ -246,6 +298,8 @@ class Monitor:
                     log.warning("runner folder report failed: %s", exc)
             self.backup_files = [evaluate_files(item, folders.get(item.folder)) for item in settings.files]
         self.backups_checked = time.time()
+        if self.duplicati_error is None:
+            self.tracker.backups((self.duplicati_status or {}).get("jobs", []), self.backup_files)
 
     @staticmethod
     def _reason(exc: Exception) -> str:
@@ -258,6 +312,7 @@ class Monitor:
             try:
                 self.requests = await media.jellyseerr.requests()
                 self.requests_error = None
+                self.tracker.requests(self.requests.get("pending", []), self.requests.get("processing", []))
             except Exception as exc:  # noqa: BLE001
                 log.warning("jellyseerr failed: %s", exc)
                 self.requests_error = self._reason(exc)
@@ -273,13 +328,29 @@ class Monitor:
         # Active downloads first, then by how far along they are.
         queue.sort(key=lambda q: (q["status"] != "downloading", -(q["progress"] or 0)))
         self.queue, self.queue_errors = queue, errors
+        if not errors:
+            # With a source down its items vanish from the queue; that is not a finished download.
+            self.tracker.downloads(queue)
         if media.qbittorrent:
             try:
                 self.torrents = await media.qbittorrent.status()
                 self.torrents_error = None
+                self._count_download(self.torrents.get("down_session_bytes"))
             except Exception as exc:  # noqa: BLE001
                 log.warning("qbittorrent failed: %s", exc)
                 self.torrents_error = self._reason(exc)
+
+    def _count_download(self, session_bytes: float | None) -> None:
+        """Add what qBittorrent downloaded since the last poll to today's total."""
+        if session_bytes is None or not self.store:
+            return
+        previous, self._download_bytes = self._download_bytes, session_bytes
+        if previous is None:
+            return
+        # A smaller figure means qBittorrent restarted and counts from zero again.
+        grown = session_bytes - previous if session_bytes >= previous else session_bytes
+        if grown > 0:
+            self._safely(self.store.add_daily, time.strftime("%Y-%m-%d"), "download_bytes", grown)
 
     def _media(self) -> dict | None:
         if not (self.media and self.media_settings):
@@ -303,6 +374,7 @@ class Monitor:
         try:
             self.watching = await self.history.sample()
             self.watching_error = None
+            self.tracker.streams(self.watching)
         except Exception as exc:  # noqa: BLE001
             log.warning("jellyfin sessions failed: %s", exc)
             self.watching_error = self._reason(exc)
@@ -402,7 +474,34 @@ class Monitor:
             record = latest.get(system["id"])
             stats[machine.id] = {**summarize(system, record["stats"] if record else None),
                                  "updated": record["created"] if record else None}
+            if record and self.store:
+                self._safely(self.store.add_machine_sample, machine.id, hourly_sample(stats[machine.id]))
+                if machine.id not in self._backfilled:
+                    self._backfilled.add(machine.id)
+                    await self._backfill(machine.id, system["id"])
         self.machine_stats = stats
+
+    async def _backfill(self, machine_id: str, system_id: str) -> None:
+        """Seed the hourly history from what the stats source still keeps (about a month)."""
+        assert self.beszel is not None and self.store is not None
+        if self.store.get_state(f"backfilled:{machine_id}"):
+            return
+        points: list[tuple[float, dict]] = []
+        try:
+            for record_type, seconds in (("120m", 7 * 86400), ("480m", 30 * 86400)):
+                series = to_series(await self.beszel.records(system_id, record_type, seconds))
+                for i, t in enumerate(series["t"]):
+                    values = {k: (series[k] or [None] * len(series["t"]))[i]
+                              for k in ("cpu", "mem", "disk", "net_tx", "net_rx", "cpu_temp", "gpu", "gpu_temp")}
+                    values["pools"] = {name: v[i] for name, v in series["pools"].items() if v[i] is not None}
+                    points.append((t, {k: v for k, v in values.items() if v is not None}))
+        except Exception as exc:  # noqa: BLE001
+            log.warning("history backfill for %s failed: %s", machine_id, exc)
+            self._backfilled.discard(machine_id)
+            return
+        added = self.store.backfill_machine(machine_id, points)
+        self.store.set_state(f"backfilled:{machine_id}", "1")
+        log.info("seeded %d hours of history for %s", added, machine_id)
 
     async def poll_sparklines(self) -> None:
         assert self.beszel is not None
@@ -419,8 +518,13 @@ class Monitor:
             lines[machine.id] = {"cpu": series["cpu"], "mem": series["mem"]}
         self.sparklines = lines
 
-    async def history(self, machine_id: str, range_name: str) -> dict | None:
+    async def machine_history(self, machine_id: str, range_name: str) -> dict | None:
         machine = next((m for m in self.config.machines if m.id == machine_id), None)
+        if range_name in LONG_RANGES:
+            if not machine or not self.store:
+                return None
+            seconds, bucket = LONG_RANGES[range_name]
+            return self.store.machine_series(machine_id, time.time() - seconds, bucket)
         if not self.beszel or not machine or not machine.beszel:
             return None
         system = self.beszel_systems.get(machine.beszel)
@@ -486,6 +590,7 @@ class Monitor:
             "runner": {"ok": self.runner_error is None, "error": self.runner_error},
             "beszel": {"configured": self.beszel is not None, "ok": self.beszel_error is None,
                        "error": self.beszel_error},
+            "ledger": self.store is not None,
             "edge": self._edge(),
             "backups": self._backups(),
             "media": self._media(),

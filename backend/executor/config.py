@@ -116,6 +116,8 @@ class MapPoint(BaseModel):
     label: str
     lat: float = Field(ge=-90, le=90)
     lon: float = Field(ge=-180, le=180)
+    # The machine at this point, whose health the map shows on the marker.
+    machine: Slug | None = None
 
 
 class LocationCorrection(BaseModel):
@@ -328,6 +330,11 @@ class Action(BaseModel):
     danger: Literal["low", "medium", "high"] = "medium"
     # Show the media server's active streams in the confirm dialog.
     show_streams: bool = False
+    # Heading the action is listed under, usually the machine or stack it acts on.
+    group: str | None = None
+    # Where else the page offers the action: machine or service ids, or the
+    # panels "downloads", "requests", "now-playing", "backups" and "edge".
+    attach: list[Slug] = []
     steps: list[Step] = Field(min_length=1)
 
 

@@ -43,7 +43,11 @@ actions:
     confirm: >-
       The download clients and indexers go offline for about a minute while
       the stack is recreated.
-    danger: medium            # low | medium | high: colours the button
+    danger: medium            # low | medium | high: how long the launch button must be held
+    group: Downloads          # heading in the Armory deck
+    # Also offered on these cards: machine or service ids, or the panels
+    # downloads, requests, now-playing, backups, edge and backup-<Duplicati job id>.
+    attach: [downloads, sonarr, radarr]
     steps:
       - name: Stop the stack
         run: [docker, compose, down]
