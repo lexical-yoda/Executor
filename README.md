@@ -331,8 +331,15 @@ An action with `show_streams: true` lists the media server's active streams
 in its briefing, so you can see who would be interrupted. This needs the
 `jellyfin` integration in `config.yaml` and `JELLYFIN_API_KEY` in `.env`.
 
-Variables that `http` steps read are removed from the environment of every
-command the runner starts, like `RUNNER_TOKEN`.
+The runner gets `JELLYFIN_API_KEY`, `SONARR_API_KEY`, `RADARR_API_KEY` and
+`PROWLARR_API_KEY` from `.env` for `http` steps; add any other key to its
+`environment` in `compose.yaml`. Variables that `http` steps read are removed
+from the environment of every command the runner starts, like `RUNNER_TOKEN`.
+Run output is scrubbed before it is shown or saved: the values of those
+secrets, and credentials in `key=value` form (`apikey=`, `token=`,
+`password=` and the like), which apps often echo in error messages about
+other apps, become `<redacted>`. History written by older versions is
+scrubbed the same way when the runner starts.
 
 #### SSH steps
 

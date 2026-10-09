@@ -13,7 +13,7 @@ AUTH = {"Authorization": f"Bearer {TOKEN}"}
 ACTIONS = ActionsConfig.model_validate({"actions": [
     {"id": "ok", "title": "OK", "confirm": "sure?", "steps": [
         {"name": "one", "run": ["sh", "-c", "echo hello"]},
-        {"name": "two", "run": ["sh", "-c", "echo token=${RUNNER_TOKEN:-absent}"]},
+        {"name": "two", "run": ["sh", "-c", "echo runner-token:${RUNNER_TOKEN:-absent}"]},
         {"name": "three", "wait_healthy": "gluetun", "timeout": 5},
     ]},
     {"id": "bad", "title": "Bad", "confirm": "sure?", "steps": [
@@ -66,7 +66,7 @@ def test_successful_run_hides_token_and_is_persisted(tmp_path, monkeypatch):
     assert done["status"] == "succeeded"
     assert [s["status"] for s in done["steps"]] == ["succeeded"] * 3
     assert "hello" in done["lines"]
-    assert "token=absent" in done["lines"]
+    assert "runner-token:absent" in done["lines"]
     assert TOKEN not in "\n".join(done["lines"])
     assert (tmp_path / "runs.jsonl").read_text().count("\n") == 1
 
@@ -222,3 +222,37 @@ def test_ssh_connection_failure_is_explained(tmp_path, monkeypatch):
         done = wait_for(c, c.post("/runs", json={"action": "reload"}, headers=AUTH).json()["id"])
     assert done["status"] == "failed"
     assert "SSH connection failed" in done["error"]
+
+
+def test_credentials_in_responses_and_old_history_are_hidden(tmp_path, monkeypatch):
+    import json
+
+    monkeypatch.setenv("MEDIA_KEY", SECRET)
+    # A run saved by an earlier version, with another app's key in an error message.
+    old = {"id": "abc", "action": "scan", "title": "Scan", "requested_by": "x", "started_at": "t",
+           "steps": [{"name": "refresh", "status": "failed"}], "status": "failed", "finished_at": "t",
+           "error": "refresh: failed at http://idx:9696/1/api?t=caps&apikey=0123456789abcdef",
+           "lines": ["GET http://idx:9696/1/api?apikey=0123456789abcdef&t=caps", "plain line"]}
+    (tmp_path / "runs.jsonl").write_text(json.dumps(old) + "\n")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(400, text=f'[{{"error": "failed at http://idx:9696/2/api?apikey=feedbeef1234 '
+                                        f'with key {SECRET}"}}]')
+
+    actions = ActionsConfig.model_validate({"actions": [
+        {"id": "test", "title": "Test", "confirm": "sure?", "steps": [
+            {"name": "testall", "http": {"url": "http://media.example/testall",
+                                         "headers": {"X-Api-Key": "${MEDIA_KEY}"}}},
+        ]},
+    ]})
+    app = create_runner_app(actions, TOKEN, FakeDocker(), tmp_path, httpx.MockTransport(handler))
+    with TestClient(app) as c:
+        history = c.get("/runs/abc", headers=AUTH).json()
+        assert "0123456789abcdef" not in json.dumps(history)
+        assert "apikey=<redacted>&t=caps" in history["lines"][0] and "plain line" in history["lines"]
+        done = wait_for(c, c.post("/runs", json={"action": "test"}, headers=AUTH).json()["id"])
+    log = "\n".join(done["lines"])
+    assert "feedbeef1234" not in log and SECRET not in log
+    assert "apikey=<redacted>" in log and "with key <redacted>" in log
+    saved = (tmp_path / "runs.jsonl").read_text()
+    assert "0123456789abcdef" not in saved and "feedbeef1234" not in saved and SECRET not in saved

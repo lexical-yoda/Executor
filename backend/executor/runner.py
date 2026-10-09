@@ -38,6 +38,16 @@ KEEP_RUNS = 50
 ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 # Never hand these to a child process.
 SECRET_ENV = {"RUNNER_TOKEN"}
+# Credentials in URLs or form text, such as "apikey=..." in an app's error
+# message about another app; their values never reach the log.
+CREDENTIAL = re.compile(r"(?i)\b((?:api[_-]?key|apikey|passkey|access[_-]?token|token|password|secret)=)[^&\s\"'<>]+")
+
+
+def redact(text: str, secrets: tuple[str, ...] = ()) -> str:
+    """Hide credentials in a line of output: values of the runner's own secrets and key=value pairs."""
+    for value in secrets:
+        text = text.replace(value, "<redacted>")
+    return CREDENTIAL.sub(r"\1<redacted>", text)
 
 
 def now() -> str:
@@ -66,8 +76,10 @@ class Run:
     lines: list[str] = field(default_factory=list)
 
     def say(self, text: str) -> None:
+        # Set by the runner; not a field, so it is never saved or served.
+        secrets: tuple[str, ...] = getattr(self, "secrets", ())
         for raw in text.replace("\r", "\n").split("\n"):
-            line = ANSI.sub("", raw).rstrip()
+            line = redact(ANSI.sub("", raw).rstrip(), secrets)
             if line:
                 self.lines.append(line)
         if len(self.lines) > MAX_LINES:
@@ -150,6 +162,8 @@ class Runner:
         # The runner token and every variable an http step reads stay out of
         # child processes.
         self.secret_env = SECRET_ENV | actions.secret_names()
+        # Their values, hidden wherever they turn up in a run's output.
+        self.secret_values = tuple(v for k in sorted(self.secret_env) if len(v := os.environ.get(k, "")) >= 8)
         self.runs: dict[str, Run] = {}
         self.busy: str | None = None
         self._tasks: set[asyncio.Task] = set()
@@ -165,10 +179,11 @@ class Runner:
         if not path or not path.exists():
             return
         try:
-            rows = path.read_text(encoding="utf-8").splitlines()[-KEEP_RUNS:]
+            rows = path.read_text(encoding="utf-8").splitlines()
         except OSError as exc:
             log.warning("cannot read run history: %s", exc)
             return
+        rows = self._scrub(path, rows)[-KEEP_RUNS:]
         for row in rows:
             try:
                 data = json.loads(row)
@@ -177,6 +192,33 @@ class Runner:
                 self.runs[run.id] = run
             except (ValueError, TypeError, KeyError):
                 continue
+
+    def _scrub(self, path: Path, rows: list[str]) -> list[str]:
+        """Hide credentials that earlier versions wrote to the history, rewriting the file if any."""
+        clean: list[str] = []
+        changed = False
+        for row in rows:
+            try:
+                data = json.loads(row)
+                lines = [redact(line, self.secret_values) for line in data.get("lines") or []]
+                error = redact(data["error"], self.secret_values) if data.get("error") else data.get("error")
+            except (ValueError, TypeError, AttributeError):
+                clean.append(row)
+                continue
+            if lines != (data.get("lines") or []) or error != data.get("error"):
+                changed = True
+                data["lines"], data["error"] = lines, error
+                row = json.dumps(data)
+            clean.append(row)
+        if changed:
+            try:
+                temp = path.with_suffix(".tmp")
+                temp.write_text("".join(r + "\n" for r in clean), encoding="utf-8")
+                temp.replace(path)
+                log.info("hid credentials in the run history")
+            except OSError as exc:
+                log.warning("cannot rewrite run history: %s", exc)
+        return clean
 
     def _persist(self, run: Run) -> None:
         path = self._log_path
@@ -208,6 +250,7 @@ class Runner:
             started_at=now(),
             steps=[StepState(step.name) for step in action.steps],
         )
+        run.secrets = self.secret_values  # type: ignore[attr-defined]
         # Set before the first await, so two requests cannot both start.
         self.busy = run.id
         self.runs[run.id] = run
@@ -232,7 +275,7 @@ class Runner:
                 except Exception as exc:  # noqa: BLE001 - every failure must end the run cleanly
                     state.status = "failed"
                     state.finished_at = now()
-                    run.error = f"{step.name}: {exc}"
+                    run.error = redact(f"{step.name}: {exc}", self.secret_values)
                     run.say(f"!! {run.error}")
                     for rest in run.steps:
                         if rest.status == "pending":

@@ -43,8 +43,9 @@ actions:
   - id: reset-download-stack
     title: Reset download stack
     description: >-
-      Full down and up of the VPN download stack, then a restart of Sonarr and
-      Radarr once the VPN and the download client both report healthy.
+      Full down and up of the VPN download stack. Once the VPN and the
+      download client report healthy, restarts Sonarr, Radarr and Prowlarr,
+      waits for them, then tests every indexer in Sonarr and Radarr.
     confirm: >-
       The download clients and indexers go offline for about a minute while
       the stack is recreated.
@@ -68,9 +69,29 @@ actions:
       - name: Wait for qBittorrent to be healthy
         wait_healthy: qbittorrent
         timeout: 300
-      - name: Restart Sonarr and Radarr
-        run: [docker, restart, sonarr, radarr]
-        timeout: 120
+      - name: Let the VPN settle for 15 seconds
+        run: [sleep, "15"]
+        timeout: 30
+      - name: Restart Sonarr, Radarr and Prowlarr
+        run: [docker, restart, sonarr, radarr, prowlarr]
+        timeout: 180
+      # Without a Docker healthcheck, wait for the app's API instead.
+      - name: Wait for Sonarr to answer
+        http:
+          method: GET
+          url: http://host.docker.internal:8989/ping
+        retry_every: 5
+        timeout: 300
+      # Testing all indexers also clears any disabled after failures. Needs
+      # SONARR_API_KEY in .env (passed to the runner by compose.yaml).
+      - name: Test all indexers in Sonarr
+        http:
+          method: POST
+          url: http://host.docker.internal:8989/api/v3/indexer/testall
+          headers:
+            X-Api-Key: ${SONARR_API_KEY}
+        retry_every: 20
+        timeout: 140
 
   - id: restart-jellyfin
     title: Restart Jellyfin

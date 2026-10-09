@@ -83,6 +83,9 @@ services:
       TZ: ${TZ:-UTC}
       # Secrets that http steps may read as ${NAME}. Child processes never see them.
       JELLYFIN_API_KEY: ${JELLYFIN_API_KEY:-}
+      SONARR_API_KEY: ${SONARR_API_KEY:-}
+      RADARR_API_KEY: ${RADARR_API_KEY:-}
+      PROWLARR_API_KEY: ${PROWLARR_API_KEY:-}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${EXECUTOR_DIR:?set EXECUTOR_DIR in .env}/config/actions.yaml:/config/actions.yaml:ro
