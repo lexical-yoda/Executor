@@ -39,7 +39,7 @@ actions:
     title: Reset download stack
     description: >-
       Full down and up of the VPN download stack, then a restart of Sonarr and
-      Radarr once the VPN container reports healthy.
+      Radarr once the VPN and the download client both report healthy.
     confirm: >-
       The download clients and indexers go offline for about a minute while
       the stack is recreated.
@@ -55,6 +55,9 @@ actions:
         timeout: 420
       - name: Wait for the VPN to be healthy
         wait_healthy: gluetun
+        timeout: 300
+      - name: Wait for qBittorrent to be healthy
+        wait_healthy: qbittorrent
         timeout: 300
       - name: Restart Sonarr and Radarr
         run: [docker, restart, sonarr, radarr]
