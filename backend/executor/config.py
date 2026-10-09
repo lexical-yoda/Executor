@@ -107,6 +107,9 @@ class BeszelIntegration(BaseModel):
 class EdgeIntegration(BaseModel):
     # JSON written by the VPS's bandwidth fetcher (see README, "Edge panel").
     bandwidth_url: str | None = None
+    # JSON written by the edge server's traffic summariser (see README, "Traffic
+    # and shields"): requests per site and attacks, by hour.
+    traffic_url: str | None = None
     # Hostnames whose TLS certificate expiry is shown.
     certificates: list[str] = []
     interval: float = 300

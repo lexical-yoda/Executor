@@ -138,6 +138,35 @@ the resulting file on a private interface to the Executor host only. Only
 outbound transfer is billed; the allowance shown is the account's pooled
 credits (instance credits accruing hourly plus the free monthly credits).
 
+### Traffic and shields (optional)
+
+Two more cards in the Edge section, from `integrations.edge.traffic_url`:
+
+- **Public sites:** requests to each site over the last day (health checks
+  from Executor and Uptime Kuma counted apart, and the share from home, the
+  server's own public address), server and client errors, response times
+  (median and 95th percentile), edge cache hits, data served and where
+  visitors are. A site's drawer charts 24 hours, 7 or 30 days.
+- **Shields:** failed SSH logins, fail2ban bans, firewall blocks and
+  requests for host names the server does not serve (scanners), with where
+  they come from, the usernames tried and the ports probed. Its drawer has a
+  map of attack origins converging on the edge server.
+
+The file comes from a summariser on the edge server that runs every five
+minutes as an unprivileged user allowed to read logs, reads only what was
+added to the nginx access and catch-all logs, the firewall log, the fail2ban
+log and the SSH journal since its last run, and writes counts by hour for the
+last 49 hours as JSON: `sites` (per hour and site: requests, health checks,
+status classes, bytes, a request-time histogram, cache hits), `visitor_ips`
+and `threat_ips` (per hour, address and count), `threat_hours`,
+`threat_tags` (usernames and ports) and `recent_15m`. No paths, queries or
+user agents are kept. Executor places each address with its geolocation
+databases, keeps visitors only as city counts (35 days) and attacker
+addresses for a week, and keeps hourly totals for 400 days. A site serving
+more than 5% server errors over 15 minutes raises an alert; an hour with
+over three times the week's average attacks goes to the event log; the weekly
+recap counts requests and attacks turned away.
+
 ### Media panels (optional)
 
 - **Requests** from Jellyseerr: counts, every request waiting for approval and
@@ -303,6 +332,8 @@ one SQLite file:
   counts, for its growth chart. Kept 400 days.
 - **Media library size:** one reading a day of the Jellyfin libraries'
   counts and sizes, for their growth chart. Kept 400 days.
+- **Edge traffic and attacks:** hourly totals per public site and of
+  attacks (400 days), visitor places (35 days), attacker addresses (7 days).
 
 Without the folder the event log is kept in memory only, and the recap,
 uptime bars and long ranges are unavailable.
@@ -521,4 +552,5 @@ Tests: `cd backend && ../.venv/bin/python -m pytest -q`. Tests that check a real
    event log, uptime history, a year of machine history, the weekly recap and
    the demo tour (done); stack discovery, so the service list follows the
    stacks that actually run (done); the settings page (done); the Immich photo
-   library (done); the media library, storage health and DNS (done).
+   library (done); the media library, storage health and DNS (done); edge
+   traffic and shields (done).

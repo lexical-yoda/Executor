@@ -75,6 +75,13 @@ async def fetch_bandwidth(url: str, client: httpx.AsyncClient) -> dict:
     return summarize_bandwidth(response.json())
 
 
+async def fetch_traffic(url: str, client: httpx.AsyncClient) -> dict:
+    """The edge server's traffic and attack summary (written by its timer every 5 minutes)."""
+    response = await client.get(url, timeout=15)
+    response.raise_for_status()
+    return response.json()
+
+
 def parse_not_after(value: str) -> datetime:
     """Parse an OpenSSL date such as 'Dec 10 12:00:00 2026 GMT'."""
     return datetime.strptime(value, "%b %d %H:%M:%S %Y %Z").replace(tzinfo=timezone.utc)

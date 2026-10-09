@@ -62,6 +62,25 @@ def summarize_plays(plays: list[dict]) -> dict:
     }
 
 
+def _edge(store: Store, start: float, previous: float, now: float) -> dict | None:
+    """Requests to the public sites (without health checks) and attacks, against the period before."""
+    sites = store.edge_sites(start, now)
+    if not sites:
+        return None
+    before = store.edge_sites(previous, start)
+    busiest = max(sites, key=lambda s: s["requests"])
+    attacks = store.threat_totals(start, now)
+    attacks_before = store.threat_totals(previous, start)
+    return {
+        "requests": sum(s["requests"] for s in sites),
+        "requests_before": sum(s["requests"] for s in before),
+        "busiest": {"site": busiest["site"], "requests": busiest["requests"]},
+        "attacks": attacks["ssh"] + attacks["fw"] + attacks["scans"],
+        "attacks_before": attacks_before["ssh"] + attacks_before["fw"] + attacks_before["scans"],
+        "bans": attacks["bans"],
+    }
+
+
 def build_recap(store: Store, now: float | None = None, days: int = 7, storage: list[dict] | None = None,
                 photos: dict | None = None) -> dict:
     now = now or time.time()
@@ -103,6 +122,7 @@ def build_recap(store: Store, now: float | None = None, days: int = 7, storage: 
                     "glacier_growth": next((s["aws"]["growth_7d"] for s in storage or []
                                             if s.get("aws") and s["aws"].get("growth_7d") is not None), None)},
         "actions": {"succeeded": count("action", "good"), "failed": count("action", "bad")},
+        "edge": _edge(store, start, previous, now),
         # Uploads to the photo library and its growth, when Immich is configured.
         "photos": photos,
         "machines": store.machine_averages(start, now),

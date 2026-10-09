@@ -2,6 +2,7 @@ import { Globe, ShieldCheck } from 'lucide-react'
 import type { Bandwidth, Certificate, Edge as EdgeData } from '../api'
 import { ago } from '../format'
 import { useApp } from '../state'
+import { ShieldsCard, TrafficCard } from './Traffic'
 import { AttachedActions } from './ActionKit'
 import { Empty, Facts, SourceNote } from './ui'
 
@@ -204,6 +205,12 @@ export function Edge({ edge }: { edge: EdgeData }) {
         <BandwidthCard bw={edge.bandwidth} error={edge.bandwidth_error} now={now} />
         <CertificateCard certs={edge.certificates} />
       </div>
+      {edge.traffic && (
+        <div className="edge-grid edge-grid-traffic">
+          <TrafficCard traffic={edge.traffic} />
+          <ShieldsCard traffic={edge.traffic} />
+        </div>
+      )}
       <AttachedActions target="edge" />
     </section>
   )

@@ -228,6 +228,30 @@ export function collectAlerts(s: Snapshot | null): Alert[] {
       ref: { kind: 'nas', id: '' },
     })
   }
+  const tr = s.edge?.traffic
+  if (tr?.configured && tr.error) {
+    add({
+      key: 'traffic',
+      level: 'warn',
+      deck: 'engineering',
+      title: 'Edge traffic figures unavailable',
+      detail: tr.error,
+      ref: null,
+    })
+  }
+  for (const site of tr?.sites ?? []) {
+    const r = site.recent
+    if (r && r.requests >= 20 && r.s5 / r.requests > 0.05) {
+      add({
+        key: `site:${site.site}`,
+        level: 'bad',
+        deck: 'engineering',
+        title: `${site.site} is failing: ${Math.round((r.s5 / r.requests) * 100)}% server errors`,
+        detail: `${r.s5} of ${r.requests} requests in the last 15 minutes`,
+        ref: { kind: 'site', id: site.site },
+      })
+    }
+  }
   const dns = s.pihole
   if (dns && (!dns.configured || dns.error)) {
     add({

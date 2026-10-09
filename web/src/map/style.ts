@@ -102,6 +102,7 @@ export const COLORS = {
   down: '#f87171',
   unknown: '#64748b',
   halo: '#0a111d',
+  threat: '#f87171',
 }
 
 const ATTRIBUTION =
@@ -290,12 +291,50 @@ function overlayLayers(): LayerSpecification[] {
       paint: { 'text-color': '#ffe2b0', 'text-halo-color': COLORS.halo, 'text-halo-width': 1.4 },
     },
     {
+      id: 'threat-link',
+      type: 'line',
+      source: 'threat-links',
+      layout: { 'line-cap': 'round' },
+      paint: {
+        'line-width': ['interpolate', ['linear'], ['get', 'count'], 1, 0.8, 50, 1.6, 500, 2.6],
+        'line-opacity': 0.55,
+        'line-gradient': ['interpolate', ['linear'], ['line-progress'], 0, COLORS.threat, 1, 'rgba(56, 189, 248, 0.6)'],
+      },
+    },
+    {
+      id: 'threat-dot',
+      type: 'circle',
+      source: 'threats',
+      paint: {
+        'circle-color': COLORS.threat,
+        'circle-opacity': 0.85,
+        'circle-stroke-color': '#2a0b0b',
+        'circle-stroke-width': 1.2,
+        'circle-radius': ['interpolate', ['linear'], ['get', 'count'], 1, 3.5, 20, 6, 200, 10, 2000, 15],
+      },
+    },
+    {
+      id: 'threat-label',
+      type: 'symbol',
+      source: 'threats',
+      filter: ['==', ['get', 'named'], true],
+      layout: {
+        'text-field': ['get', 'label'],
+        'text-font': FONT,
+        'text-size': 11,
+        'text-offset': [0, 1.2],
+        'text-anchor': 'top',
+        'text-optional': true,
+      },
+      paint: { 'text-color': '#fecaca', 'text-halo-color': COLORS.halo, 'text-halo-width': 1.4 },
+    },
+    {
       id: 'flow',
       type: 'circle',
       source: 'flow',
       paint: {
-        'circle-color': ['match', ['get', 'leg'], 'route', '#c4e9ff', '#ffe2b0'],
-        'circle-radius': ['match', ['get', 'leg'], 'route', 3.4, 2.8],
+        'circle-color': ['match', ['get', 'leg'], 'route', '#c4e9ff', 'threat', '#fca5a5', '#ffe2b0'],
+        'circle-radius': ['match', ['get', 'leg'], 'route', 3.4, 'threat', 2.2, 2.8],
         'circle-blur': 0.3,
       },
     },
@@ -377,10 +416,11 @@ export function buildStyle(tilesets: Tileset[]): StyleSpecification {
     if (i === 0) base = basemapLayers(t.name, false)
     else details.push(...basemapLayers(t.name, true))
   })
-  for (const name of ['accuracy', 'trail', 'route', 'trail-points', 'viewers', 'flow', 'nodes', 'replay']) {
+  for (const name of ['accuracy', 'trail', 'route', 'trail-points', 'viewers', 'flow', 'nodes', 'replay', 'threats']) {
     sources[name] = { type: 'geojson', data: EMPTY }
   }
   sources.links = { type: 'geojson', data: EMPTY, lineMetrics: true }
+  sources['threat-links'] = { type: 'geojson', data: EMPTY, lineMetrics: true }
   sources.route = { type: 'geojson', data: EMPTY, lineMetrics: true }
   sources.places = { type: 'geojson', data: EMPTY, cluster: true, clusterRadius: 38, clusterMaxZoom: 9 }
   return {

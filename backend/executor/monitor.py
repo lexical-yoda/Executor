@@ -19,7 +19,8 @@ from .sources.aws import CloudWatchS3
 from .sources.backups import evaluate_files
 from .sources.beszel import Beszel, summarize, to_series
 from .sources.duplicati import Duplicati
-from .sources.edge import check_certificate, fetch_bandwidth
+from .sources.edge import check_certificate, fetch_bandwidth, fetch_traffic
+from . import traffic as edge_traffic
 from .sources.immich import Immich
 from .sources.jellyfin import Jellyfin
 from .sources.pihole import PiHole
@@ -213,6 +214,12 @@ class Monitor:
         self.bandwidth_error: str | None = None
         self.certificates: list[dict] = []
         self._certs_checked = 0.0
+        # Traffic and attacks at the edge: the last day, computed when a summary arrives.
+        self.traffic: dict | None = None
+        self.traffic_error: str | None = None
+        self.traffic_checked: float | None = None
+        self.traffic_buckets: list[int] = edge_traffic.RT_BUCKETS
+        self._spike_hour: int | None = None
         self.probes: dict[str, Probe] = {}
         self.pings: dict[str, Probe] = {}
         self.last_seen: dict[str, str] = {}
@@ -516,6 +523,13 @@ class Monitor:
                 self.bandwidth_error = None
             except Exception as exc:  # noqa: BLE001
                 self.bandwidth_error = str(exc)[:160] or type(exc).__name__
+        if settings.traffic_url:
+            try:
+                await self._ingest_traffic(await fetch_traffic(settings.traffic_url, self._http))
+                self.traffic_error = None
+            except Exception as exc:  # noqa: BLE001
+                log.warning("edge traffic failed: %s", exc)
+                self.traffic_error = self._reason(exc)
         # Certificates change rarely; check them hourly.
         if settings.certificates and time.monotonic() - self._certs_checked > 3600:
             self.certificates = list(await asyncio.gather(*(check_certificate(h) for h in settings.certificates)))
@@ -890,11 +904,36 @@ class Monitor:
             "files": self.backup_files,
         }
 
+    async def _ingest_traffic(self, data: dict) -> None:
+        geo = self.history.geo if self.history and self.history.geo else None
+        rows = edge_traffic.ingest(data, geo.locate if geo else None, geo.home_ip if geo else None)
+        self.traffic_buckets = rows["buckets"]
+        if not self.store:
+            raise RuntimeError("traffic needs Executor's data folder")
+        await asyncio.to_thread(self.store.save_edge, rows["sites"], rows["places"], rows["threats"], rows["ips"],
+                                rows["tags"])
+        now = time.time()
+        self.traffic = await asyncio.to_thread(edge_traffic.overview, self.store, now, rows["recent"],
+                                               rows["banned_now"], rows["buckets"])
+        self.traffic["generated"] = rows["generated"]
+        self.traffic_checked = now
+        spike = edge_traffic.spike(self.store, now)
+        hour = int(now // 3600 * 3600) - 3600
+        if spike and self._spike_hour != hour:
+            self._spike_hour = hour
+            count, average = spike
+            self.tracker.emit("attack", "warn", f"Attack spike on the edge server: {count} attempts in an hour",
+                              f"About {round(average)} an hour this week", ref="threats")
+
     def _edge(self) -> dict | None:
         if not self.edge_settings:
             return None
         return {"bandwidth": self.bandwidth, "bandwidth_error": self.bandwidth_error,
-                "certificates": self.certificates}
+                "certificates": self.certificates,
+                "traffic": {"configured": bool(self.edge_settings.traffic_url),
+                            "ok": self.traffic_error is None and self.traffic is not None,
+                            "error": self.traffic_error, "checked_at": self.traffic_checked,
+                            **(self.traffic or {})} if self.edge_settings.traffic_url else None}
 
     def _beszel_machines(self) -> list[tuple[Machine, dict]]:
         """Configured machines that exist in Beszel, with their system record."""

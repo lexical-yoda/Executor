@@ -113,6 +113,48 @@ CREATE TABLE IF NOT EXISTS daily (
     value REAL NOT NULL,
     PRIMARY KEY (day, key)
 );
+CREATE TABLE IF NOT EXISTS edge_hours (
+    hour INTEGER NOT NULL,
+    site TEXT NOT NULL,
+    requests INTEGER NOT NULL,
+    monitor INTEGER NOT NULL,
+    own INTEGER NOT NULL,
+    s2 INTEGER NOT NULL, s3 INTEGER NOT NULL, s4 INTEGER NOT NULL, s5 INTEGER NOT NULL,
+    bytes INTEGER NOT NULL,
+    visitors INTEGER NOT NULL,
+    rt TEXT NOT NULL,
+    cache_hit INTEGER NOT NULL,
+    cache_total INTEGER NOT NULL,
+    PRIMARY KEY (hour, site)
+);
+CREATE TABLE IF NOT EXISTS edge_places (
+    hour INTEGER NOT NULL,
+    site TEXT NOT NULL,
+    country_code TEXT NOT NULL,
+    city TEXT NOT NULL,
+    lat REAL, lon REAL,
+    n INTEGER NOT NULL,
+    PRIMARY KEY (hour, site, country_code, city)
+);
+CREATE TABLE IF NOT EXISTS threat_hours (
+    hour INTEGER PRIMARY KEY,
+    ssh INTEGER NOT NULL, bans INTEGER NOT NULL, fw INTEGER NOT NULL, scans INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS threat_ips (
+    hour INTEGER NOT NULL,
+    ip TEXT NOT NULL,
+    ssh INTEGER NOT NULL, fw INTEGER NOT NULL, scans INTEGER NOT NULL,
+    banned INTEGER NOT NULL,
+    country_code TEXT, city TEXT, lat REAL, lon REAL,
+    PRIMARY KEY (hour, ip)
+);
+CREATE TABLE IF NOT EXISTS threat_tags (
+    hour INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    tag TEXT NOT NULL,
+    n INTEGER NOT NULL,
+    PRIMARY KEY (hour, kind, tag)
+);
 """
 
 CHECK_BUCKET = 300
@@ -484,6 +526,95 @@ class Store:
         return [(r[0], r[1]) for r in self._db.execute(
             "SELECT day, value FROM daily WHERE key = ? AND day >= ? ORDER BY day", (key, first_day))]
 
+    # --- edge traffic and attacks --------------------------------------------
+    def save_edge(self, sites: list[dict], places: list[tuple], threats: list[dict], ips: list[tuple],
+                  tags: list[dict]) -> None:
+        """Replace the hours the edge server reported (it resends the last two days each time)."""
+        site_hours = sorted({s["hour"] for s in sites})
+        threat_hours = sorted({t["hour"] for t in threats})
+        with self._lock:
+            self._db.execute("BEGIN")
+            try:
+                self._write_edge(site_hours, threat_hours, sites, places, threats, ips, tags)
+            except Exception:
+                self._db.execute("ROLLBACK")
+                raise
+            self._db.execute("COMMIT")
+
+    def _write_edge(self, site_hours, threat_hours, sites, places, threats, ips, tags) -> None:
+        for hour in site_hours:
+            self._db.execute("DELETE FROM edge_hours WHERE hour = ?", (hour,))
+            self._db.execute("DELETE FROM edge_places WHERE hour = ?", (hour,))
+        self._db.executemany(
+            "INSERT INTO edge_hours VALUES (:hour, :site, :requests, :monitor, :own, :s2, :s3, :s4, :s5, "
+            ":bytes, :visitors, :rt, :cache_hit, :cache_total)", sites)
+        self._db.executemany("INSERT OR REPLACE INTO edge_places VALUES (?, ?, ?, ?, ?, ?, ?)", places)
+        for hour in threat_hours:
+            for table in ("threat_hours", "threat_ips", "threat_tags"):
+                self._db.execute(f"DELETE FROM {table} WHERE hour = ?", (hour,))
+        self._db.executemany("INSERT INTO threat_hours VALUES (:hour, :ssh, :bans, :fw, :scans)", threats)
+        self._db.executemany("INSERT INTO threat_ips VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ips)
+        self._db.executemany("INSERT OR REPLACE INTO threat_tags VALUES (:hour, :kind, :tag, :n)", tags)
+
+    def _dicts(self, sql: str, args: tuple) -> list[dict]:
+        cursor = self._db.execute(sql, args)
+        names = [d[0] for d in cursor.description]
+        return [dict(zip(names, row)) for row in cursor.fetchall()]
+
+    def edge_sites(self, since: float, until: float | None = None) -> list[dict]:
+        """Totals per site between two times, with the request time buckets added up."""
+        rows = self._dicts("SELECT * FROM edge_hours WHERE hour >= ? AND hour < ? ORDER BY hour",
+                          (since, until or 2**62))
+        sites: dict[str, dict] = {}
+        for r in rows:
+            s = sites.setdefault(r["site"], {"site": r["site"], "requests": 0, "monitor": 0, "own": 0, "s2": 0,
+                                             "s3": 0, "s4": 0, "s5": 0, "bytes": 0, "visitors": 0, "rt": [],
+                                             "cache_hit": 0, "cache_total": 0})
+            for k in ("requests", "monitor", "own", "s2", "s3", "s4", "s5", "bytes", "visitors", "cache_hit",
+                      "cache_total"):
+                s[k] += r[k]
+            rt = json.loads(r["rt"] or "[]")
+            s["rt"] = [a + b for a, b in zip(s["rt"], rt)] if s["rt"] else rt
+        return list(sites.values())
+
+    def edge_series(self, since: float, bucket_s: int, site: str | None = None) -> list[dict]:
+        where, args = "hour >= ?", [since]
+        if site:
+            where, args = where + " AND site = ?", args + [site]
+        return self._dicts(
+            f"SELECT CAST(hour / ? AS INTEGER) * ? AS t, SUM(requests) AS requests, SUM(own) AS own, "
+            f"SUM(s4) AS s4, SUM(s5) AS s5, SUM(monitor) AS monitor FROM edge_hours WHERE {where} "
+            f"GROUP BY t ORDER BY t", tuple([bucket_s, bucket_s] + args))
+
+    def edge_place_sum(self, since: float, site: str | None = None, limit: int = 300) -> list[dict]:
+        where, args = "hour >= ?", [since]
+        if site:
+            where, args = where + " AND site = ?", args + [site]
+        return self._dicts(
+            f"SELECT country_code, city, AVG(lat) AS lat, AVG(lon) AS lon, SUM(n) AS n FROM edge_places "
+            f"WHERE {where} GROUP BY country_code, city ORDER BY n DESC LIMIT ?", tuple(args + [limit]))
+
+    def threat_series(self, since: float, bucket_s: int) -> list[dict]:
+        return self._dicts(
+            "SELECT CAST(hour / ? AS INTEGER) * ? AS t, SUM(ssh) AS ssh, SUM(bans) AS bans, SUM(fw) AS fw, "
+            "SUM(scans) AS scans FROM threat_hours WHERE hour >= ? GROUP BY t ORDER BY t", (bucket_s, bucket_s, since))
+
+    def threat_totals(self, since: float, until: float | None = None) -> dict:
+        row = self._db.execute("SELECT SUM(ssh), SUM(bans), SUM(fw), SUM(scans) FROM threat_hours "
+                               "WHERE hour >= ? AND hour < ?", (since, until or 2**62)).fetchone()
+        return {k: int(v or 0) for k, v in zip(("ssh", "bans", "fw", "scans"), row)}
+
+    def threat_sources(self, since: float, limit: int = 400) -> list[dict]:
+        return self._dicts(
+            "SELECT ip, SUM(ssh) AS ssh, SUM(fw) AS fw, SUM(scans) AS scans, MAX(banned) AS banned, "
+            "MAX(country_code) AS country_code, MAX(city) AS city, MAX(lat) AS lat, MAX(lon) AS lon "
+            "FROM threat_ips WHERE hour >= ? GROUP BY ip ORDER BY SUM(ssh) + SUM(fw) + SUM(scans) DESC LIMIT ?",
+            (since, limit))
+
+    def threat_tag_sum(self, since: float, kind: str, limit: int = 10) -> list[dict]:
+        return self._dicts("SELECT tag, SUM(n) AS n FROM threat_tags WHERE hour >= ? AND kind = ? "
+                          "GROUP BY tag ORDER BY n DESC LIMIT ?", (since, kind, limit))
+
     # --- upkeep --------------------------------------------------------------
     def purge_ledger(self, now: float | None = None) -> None:
         """Drop old rows from everything but sightings (which follow the history setting)."""
@@ -496,6 +627,12 @@ class Store:
             self._db.execute("DELETE FROM plays WHERE started < ?", (now - 400 * day,))
             self._db.execute("DELETE FROM daily WHERE day < ?",
                              (time.strftime("%Y-%m-%d", time.gmtime(now - 400 * day)),))
+            self._db.execute("DELETE FROM edge_hours WHERE hour < ?", (now - 400 * day,))
+            self._db.execute("DELETE FROM edge_places WHERE hour < ?", (now - 35 * day,))
+            self._db.execute("DELETE FROM threat_hours WHERE hour < ?", (now - 400 * day,))
+            # Attacker addresses are kept a week.
+            self._db.execute("DELETE FROM threat_ips WHERE hour < ?", (now - 7 * day,))
+            self._db.execute("DELETE FROM threat_tags WHERE hour < ?", (now - 35 * day,))
 
 
 def _fold(average: dict, values: dict, n: int) -> dict:

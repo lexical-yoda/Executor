@@ -349,6 +349,83 @@ export interface Edge {
   bandwidth: Bandwidth | null
   bandwidth_error: string | null
   certificates: Certificate[]
+  traffic?: Traffic | null
+}
+
+export interface SiteTraffic {
+  site: string
+  requests: number
+  own: number
+  monitor: number
+  s4: number
+  s5: number
+  errors_pct: number
+  p50_ms: number | null
+  p95_ms: number | null
+  slow: boolean
+  bytes: number
+  visitors: number
+  cache_pct: number | null
+  spark?: number[]
+  recent?: { requests: number; s5: number }
+}
+
+export interface TagCount {
+  tag: string
+  n: number
+}
+
+export interface Traffic {
+  configured: boolean
+  ok: boolean
+  error: string | null
+  checked_at: number | null
+  generated?: number | null
+  sites?: SiteTraffic[]
+  totals?: { requests: number; own: number; monitor: number; s5: number; bytes: number }
+  countries?: { country_code: string; n: number }[]
+  threats?: {
+    ssh: number
+    bans: number
+    fw: number
+    scans: number
+    banned_now: number | null
+    attackers: number
+    countries: { country_code: string; n: number }[]
+    users: TagCount[]
+    ports: TagCount[]
+    spark: number[]
+  }
+}
+
+export interface SiteDetail {
+  site: string
+  range: string
+  bucket_s: number
+  series: { t: number; requests: number; own: number; s4: number; s5: number; monitor: number }[]
+  totals: SiteTraffic | null
+  places: { country_code: string; city: string; lat: number | null; lon: number | null; n: number }[]
+  countries: { country_code: string; n: number }[]
+}
+
+export interface ThreatDetail {
+  range: string
+  bucket_s: number
+  series: { t: number; ssh: number; bans: number; fw: number; scans: number }[]
+  totals: { ssh: number; bans: number; fw: number; scans: number }
+  points: { key: string; lat: number; lon: number; label: string; count: number }[]
+  sources: {
+    ip: string
+    ssh: number
+    fw: number
+    scans: number
+    banned: number
+    country_code: string | null
+    city: string | null
+  }[]
+  countries: { country_code: string; n: number }[]
+  users: TagCount[]
+  ports: TagCount[]
 }
 
 export type BackupStatus = 'ok' | 'warning' | 'failed' | 'stale' | 'running' | 'missing' | 'unknown'
@@ -718,6 +795,14 @@ export interface Recap {
   actions: { succeeded: number; failed: number }
   machines: Record<string, Record<string, number | null>>
   photos?: { added: number | null; added_before: number | null; bytes_growth: number | null; total_bytes: number } | null
+  edge?: {
+    requests: number
+    requests_before: number
+    busiest: { site: string; requests: number }
+    attacks: number
+    attacks_before: number
+    bans: number
+  } | null
 }
 
 export interface Tileset {
@@ -774,6 +859,9 @@ export const api = {
   recap: (days = 7) => request<Recap>(`/api/recap?days=${days}`),
   tilesets: () => request<{ tilesets: Tileset[] }>('/api/map/tilesets'),
   photoHistory: () => request<PhotoHistory>('/api/photos/history'),
+  edgeSite: (site: string, range: string) =>
+    request<SiteDetail>(`/api/edge/sites/${encodeURIComponent(site)}?range=${range}`),
+  edgeThreats: (range: string) => request<ThreatDetail>(`/api/edge/threats?range=${range}`),
   libraryHistory: () =>
     request<{ days: { date: string; bytes: number | null; movies: number | null; series: number | null; episodes: number | null }[] }>(
       '/api/media/library/history',

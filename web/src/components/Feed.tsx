@@ -11,6 +11,7 @@ import {
   Play,
   Power,
   ScrollText,
+  ShieldAlert,
   ShieldBan,
   ShieldCheck,
   Zap,
@@ -35,6 +36,7 @@ const ICONS: Record<string, typeof Activity> = {
   photos: Images,
   storage: Database,
   dns: ShieldBan,
+  attack: ShieldAlert,
   system: Power,
 }
 

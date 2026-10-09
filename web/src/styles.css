@@ -2365,6 +2365,150 @@ a.tile:hover {
   background: var(--text);
 }
 
+/* --- Traffic and shields --- */
+.edge-grid-traffic {
+  margin-top: 14px;
+}
+
+.site-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.row-btn.site-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(60px, 1fr) 70px 90px 90px;
+  gap: 10px;
+  align-items: center;
+  font-size: 13px;
+}
+
+.site-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.site-requests {
+  text-align: right;
+}
+
+.mini-bars {
+  display: block;
+  width: 100%;
+  height: 20px;
+}
+
+.mini-bars .off {
+  fill: rgba(148, 163, 184, 0.16);
+}
+
+.bars-data .on {
+  fill: var(--data);
+  opacity: 0.8;
+}
+
+.bars-threat .on {
+  fill: var(--down);
+  opacity: 0.8;
+}
+
+.shields-card .mini-bars {
+  height: 34px;
+}
+
+.sb-ok,
+.sb-ssh {
+  fill: color-mix(in srgb, var(--data) 60%, transparent);
+}
+
+.sb-4xx,
+.sb-scan {
+  fill: var(--degraded);
+}
+
+.sb-5xx {
+  fill: var(--down);
+}
+
+.sb-fw {
+  fill: #a78bfa;
+}
+
+.sb-ssh {
+  fill: color-mix(in srgb, var(--down) 70%, transparent);
+}
+
+.legend-line i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  margin: 0 4px 0 8px;
+}
+
+.legend-line i:first-child {
+  margin-left: 0;
+}
+
+.sb-ok-key {
+  background: color-mix(in srgb, var(--data) 60%, transparent);
+}
+
+.sb-4xx-key,
+.sb-scan-key {
+  background: var(--degraded);
+}
+
+.sb-5xx-key {
+  background: var(--down);
+}
+
+.sb-fw-key {
+  background: #a78bfa;
+}
+
+.sb-ssh-key {
+  background: color-mix(in srgb, var(--down) 70%, transparent);
+}
+
+.threat-map {
+  position: relative;
+  height: 280px;
+  border-radius: 12px;
+  overflow: hidden;
+  margin: 6px 0 12px;
+  border: 1px solid var(--border);
+}
+
+.threat-map .mapview {
+  height: 100%;
+}
+
+.threat-sources .mono {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tag-cloud {
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 760px) {
+  .row-btn.site-row {
+    grid-template-columns: minmax(0, 1fr) 60px auto;
+  }
+  .site-row .mini-bars,
+  .site-row .site-latency {
+    display: none;
+  }
+}
+
 /* --- DNS (Pi-hole) --- */
 .dns-body {
   display: grid;

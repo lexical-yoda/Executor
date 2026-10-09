@@ -3,7 +3,16 @@ import type { MapAnchor, PlaceGroup, Sighting, Status, Watching } from '../api'
 // Types and helpers the rest of the page may import without pulling in the
 // map engine, which loads only with the map itself.
 
-export type MapMode = 'live' | 'all'
+export type MapMode = 'live' | 'all' | 'threats'
+
+/** Where attacks on the edge server come from, merged by city. */
+export interface ThreatPoint {
+  key: string
+  lat: number
+  lon: number
+  label: string
+  count: number
+}
 
 /** A stable key for a live stream across refreshes. */
 export function streamKey(s: Watching): string {
@@ -28,6 +37,8 @@ export interface MapViewProps {
   onOpen: (kind: string, id: string) => void
   /** Attract mode moves the camera on its own. */
   tour?: boolean
+  /** In threats mode: attack origins, drawn converging on the hub. */
+  threats?: ThreatPoint[]
 }
 
 /** Distinct consecutive places in a user's trail, oldest first. */

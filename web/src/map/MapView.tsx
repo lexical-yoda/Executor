@@ -40,7 +40,7 @@ const line = (coords: LngLat[], properties: Record<string, unknown> = {}): GeoJS
 interface Leg {
   line: LngLat[]
   lengths: number[]
-  kind: 'route' | 'link'
+  kind: 'route' | 'link' | 'threat'
   dots: number
   period: number
 }
@@ -90,10 +90,12 @@ const INTERACTIVE = [
   'places-dot',
   'places-cluster',
   'trail-dots',
+  'threat-dot',
 ]
 
 export default function MapView(props: MapViewProps & { overlay?: ReactNode; className?: string }) {
   const { variant, mode, origin, hub, nodeStatus, live, places, trail, replay, selected, tour } = props
+  const threats = useMemo(() => (mode === 'threats' ? (props.threats ?? []) : []), [mode, props.threats])
   const wrap = useRef<HTMLDivElement>(null)
   const box = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MapLibre | null>(null)
@@ -193,6 +195,11 @@ export default function MapView(props: MapViewProps & { overlay?: ReactNode; cla
           ])
         case 'trail-dots':
           return tip([{ text: `${p.n}. ${p.place}`, cls: 'tip-strong' }, { text: String(p.when), cls: 'tip-muted' }])
+        case 'threat-dot':
+          return tip([
+            { text: String(p.label || 'Unknown place'), cls: 'tip-strong' },
+            { text: `${Number(p.count).toLocaleString()} attempts`, cls: 'tip-muted' },
+          ])
         default:
           return tip([])
       }
@@ -388,7 +395,23 @@ export default function MapView(props: MapViewProps & { overlay?: ReactNode; cla
       ),
     )
     set('replay', collection(replay != null && hops[replay] ? [point([hops[replay].lon, hops[replay].lat])] : []))
-  }, [ready, origin, hub, nodeStatus, groups, live.length, places, hops, mode, trail.length, replay, selected])
+
+    // Attack origins, converging on the relay: the busiest named, the busiest few flowing.
+    const target = h ?? o
+    const namedThreats = new Set(threats.slice(0, 10).map((t) => t.key))
+    set('threats', collection(threats.map((t) => point([t.lon, t.lat], { ...t, named: namedThreats.has(t.key) }))))
+    const threatLinks: GeoJSON.Feature[] = []
+    if (target) {
+      threats.slice(0, 120).forEach((t, i) => {
+        const from: LngLat = [t.lon, t.lat]
+        if (distanceKm(from, target) < 15) return
+        const path = arc(from, target, 0.18)
+        threatLinks.push(line(path, { count: t.count }))
+        if (i < 40) next.push({ line: path, lengths: measure(path), kind: 'threat', dots: 1, period: 2400 + (i % 7) * 260 })
+      })
+    }
+    set('threat-links', collection(threatLinks))
+  }, [ready, origin, hub, nodeStatus, groups, live.length, places, hops, mode, trail.length, replay, selected, threats])
 
   // --- flowing dots along the route and every link ----------------------------
   useEffect(() => {
@@ -435,10 +458,17 @@ export default function MapView(props: MapViewProps & { overlay?: ReactNode; cla
     if (hops.length) return hops.map((x) => [x.lon, x.lat])
     if (origin) pts.push([origin.lon, origin.lat])
     if (hub) pts.push([hub.lon, hub.lat])
+    if (mode === 'threats') {
+      // The relay and its attackers; home is not part of this picture.
+      pts.length = 0
+      if (hub) pts.push([hub.lon, hub.lat])
+      threats.forEach((t) => pts.push([t.lon, t.lat]))
+      return pts
+    }
     if (mode === 'all') places.forEach((p) => pts.push([p.lon, p.lat]))
     else groups.forEach((g) => pts.push(g.at))
     return pts
-  }, [hops, origin, hub, mode, places, groups])
+  }, [hops, origin, hub, mode, places, groups, threats])
 
   const fit = useCallback(
     (animate = true) => {
@@ -463,7 +493,7 @@ export default function MapView(props: MapViewProps & { overlay?: ReactNode; cla
   refit.current = fit
 
   const fitKey = `${mode}|${hops.length ? trail[0]?.user_id : ''}|${hops.length}|${
-    mode === 'all' ? places.length : groups.map((g) => g.at.join(',')).join(';')
+    mode === 'threats' ? threats.length : mode === 'all' ? places.length : groups.map((g) => g.at.join(',')).join(';')
   }`
   const fitted = useRef('')
   useEffect(() => {

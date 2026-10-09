@@ -93,6 +93,11 @@ export function RecapHighlights({ data }: { data: RecapData }) {
     place && { label: 'Busiest city', value: [place.city, place.country_code].filter(Boolean).join(', '), sub: `${place.plays} plays` },
     m.prime_hour != null && { label: 'Prime time', value: hourName(m.prime_hour)!, sub: 'most plays start' },
     m.countries > 0 && { label: 'Countries', value: String(m.countries), sub: 'tuned in' },
+    data.edge && {
+      label: 'Turned away',
+      value: data.edge.attacks.toLocaleString(),
+      sub: `attacks on the edge server · ${data.edge.bans} bans`,
+    },
     data.photos?.added != null && {
       label: 'New photos',
       value: data.photos.added.toLocaleString(),
@@ -214,6 +219,17 @@ export function RecapDrawer() {
                 {data.backups.succeeded} succeeded · {data.backups.warnings} with warnings · {data.backups.failed} failed
               </span>
             </li>
+            {data.edge && (
+              <li>
+                <RowButton onClick={() => open('threats', '', 'engineering')}>
+                  <span>Public sites</span>
+                  <span className="small muted num">
+                    {data.edge.requests.toLocaleString()} requests ({data.edge.requests_before.toLocaleString()} the period before) · busiest{' '}
+                    {data.edge.busiest.site} · {data.edge.attacks.toLocaleString()} attacks turned away
+                  </span>
+                </RowButton>
+              </li>
+            )}
             {data.photos && (
               <li>
                 <RowButton onClick={() => open('photos', '', 'archives')}>

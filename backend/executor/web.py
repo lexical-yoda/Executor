@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import mimetypes
 import re
@@ -19,6 +20,7 @@ from pydantic import BaseModel, Field, StringConstraints, field_validator
 from .config import Config
 from .history import MediaHistory
 from .monitor import LONG_RANGES, Monitor, RunnerClient
+from . import traffic as edge_traffic
 from .recap import build_recap
 from .security import Guard
 from .sources.aws import CloudWatchS3
@@ -284,6 +286,21 @@ def create_web_app(config: Config, runner: RunnerClient | None, static_dir: Path
         if not monitor.immich_settings:
             raise HTTPException(404, "Immich is not configured.")
         return monitor.photo_history()
+
+    site_pattern = re.compile(r"^[a-z0-9][a-z0-9.-]{0,99}$")
+
+    @app.get("/api/edge/sites/{site}")
+    async def edge_site(site: str, range: str = "24h") -> dict:  # noqa: A002 - the query name
+        if range not in edge_traffic.RANGES or not site_pattern.match(site):
+            raise HTTPException(400, "Unknown site or range.")
+        store_ = ledger()
+        return await asyncio.to_thread(edge_traffic.site_detail, store_, site, range, None, monitor.traffic_buckets)
+
+    @app.get("/api/edge/threats")
+    async def edge_threats(range: str = "24h") -> dict:  # noqa: A002 - the query name
+        if range not in edge_traffic.RANGES:
+            raise HTTPException(400, "Unknown range.")
+        return await asyncio.to_thread(edge_traffic.threat_detail, ledger(), range)
 
     @app.get("/api/map/tilesets")
     async def tilesets() -> dict:

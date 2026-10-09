@@ -10,6 +10,7 @@ import { DnsDrawer } from './Dns'
 import { FeedDrawer } from './Feed'
 import { LibraryDrawer } from './Library'
 import { DiskDrawer, NasDrawer, PoolDrawer } from './Storage'
+import { SiteDrawer, ThreatsDrawer } from './Traffic'
 import { DownloadDrawer, PlaceDrawer, RequestDrawer, RouteDrawer, StreamDrawer, UserDrawer } from './MediaDrawers'
 import { PhotosDrawer } from './Photos'
 import { RecapDrawer } from './Recap'
@@ -86,6 +87,10 @@ function content(d: DrawerRef): ReactNode {
       return <NasDrawer />
     case 'dns':
       return <DnsDrawer />
+    case 'site':
+      return <SiteDrawer site={d.id} />
+    case 'threats':
+      return <ThreatsDrawer />
     case 'action':
       return <ActionDrawer id={d.id} />
     case 'run':

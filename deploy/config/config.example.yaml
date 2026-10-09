@@ -43,6 +43,9 @@ integrations:
   # from a JSON file produced on the VPS (see README, "Edge panel").
   edge:
     bandwidth_url: http://10.8.0.1:8099/bandwidth.json
+    # Optional: traffic per site and attacks, from a summariser on the edge
+    # server (see README, "Traffic and shields").
+    traffic_url: http://10.8.0.1:8099/traffic.json
     certificates: [media.example.com]
     interval: 300
   # Optional. Lists active streams in the confirm dialog of actions marked
