@@ -187,7 +187,9 @@ class QBittorrent:
                                            data={"username": self._username, "password": self._password})
         if response.status_code == 403:
             raise RuntimeError("qBittorrent has banned this address after failed logins")
-        if response.text.strip() != "Ok.":
+        # Older versions answer 200 "Ok.", newer ones 204 with no body.
+        ok = response.status_code == 204 or (response.status_code == 200 and response.text.strip() == "Ok.")
+        if not ok:
             raise RuntimeError("qBittorrent refused the login")
         self._logged_in = True
 

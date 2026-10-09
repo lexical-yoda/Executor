@@ -74,15 +74,17 @@ def test_queue_items():
     assert movie["health"] == "warning" and "eligible" in movie["message"]
 
 
-def qbit_handler():
+def qbit_handler(modern: bool = False):
     state = {"logins": 0, "expire": True}
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v2/auth/login":
             state["logins"] += 1
             ok = b"password=pw" in request.content
-            return httpx.Response(200, text="Ok." if ok else "Fails.",
-                                  headers={"set-cookie": "SID=abc; path=/"} if ok else {})
+            cookie = {"set-cookie": "SID=abc; path=/"} if ok else {}
+            if modern:
+                return httpx.Response(204 if ok else 401, headers=cookie)
+            return httpx.Response(200, text="Ok." if ok else "Fails.", headers=cookie)
         if request.headers.get("cookie") != "SID=abc":
             return httpx.Response(403)
         if state["expire"]:
@@ -99,8 +101,12 @@ def qbit_handler():
     return state, handler
 
 
-def test_qbittorrent_counts_and_relogin():
-    state, handler = qbit_handler()
+import pytest  # noqa: E402
+
+
+@pytest.mark.parametrize("modern", [False, True])
+def test_qbittorrent_counts_and_relogin(modern):
+    state, handler = qbit_handler(modern)
 
     async def check():
         qbit = QBittorrent("http://qbit.example:8080", "admin", "pw", transport=httpx.MockTransport(handler))
