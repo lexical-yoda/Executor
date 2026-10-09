@@ -183,7 +183,30 @@ export interface FileBackupStatus {
   error: string | null
 }
 
+export interface StorageStatus {
+  name: string
+  bucket: string
+  configured: boolean
+  error: string | null
+  aws: {
+    fetched_at: number
+    as_of: string | null
+    bytes: number | null
+    by_type: Record<string, number>
+    objects: number | null
+    growth_30d: number | null
+    growth_90d: number | null
+    first_date: string | null
+    monthly_cost: number | null
+    series: { date: string; bytes: number }[]
+  } | null
+  duplicati_bytes: number | null
+  duplicati_versions: number | null
+  fallback_cost: number | null
+}
+
 export interface Backups {
+  storage: StorageStatus[]
   checked_at: number | null
   duplicati: { configured: boolean; ok: boolean; error: string | null; jobs: DuplicatiJob[]; paused: boolean }
   files: FileBackupStatus[]

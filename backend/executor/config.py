@@ -148,10 +148,29 @@ class FileBackup(BaseModel):
         return self
 
 
+class StorageBucket(BaseModel):
+    # An S3 bucket whose size and growth come from CloudWatch's daily storage
+    # metrics. Key: AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY in the
+    # environment, allowed only cloudwatch:GetMetricStatistics.
+    name: str
+    bucket: str
+    region: str
+    storage_types: list[str] = ["StandardStorage", "GlacierInstantRetrievalStorage",
+                                "GlacierInstantRetrievalSizeOverhead"]
+    # For the cost estimate, in USD per GiB-month.
+    price_per_gib_month: float | None = None
+    # A Duplicati job writing to this bucket: its stored size is shown beside
+    # AWS's figure, and used alone when AWS is unavailable.
+    duplicati_job: str | None = None
+
+
 class BackupsIntegration(BaseModel):
     duplicati: DuplicatiIntegration | None = None
     files: list[FileBackup] = []
+    storage: list[StorageBucket] = []
     interval: float = 60
+    # S3 storage metrics change once a day.
+    storage_interval: float = 6 * 3600
 
 
 class Upstream(BaseModel):

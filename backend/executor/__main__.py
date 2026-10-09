@@ -82,8 +82,17 @@ def main() -> None:
                                         env["QBITTORRENT_PASSWORD"], m.qbittorrent.timeout)
                 if m.qbittorrent and not missing("QBITTORRENT_USERNAME", "QBITTORRENT_PASSWORD") else None,
             )
+        cloudwatch = None
+        if backups and backups.storage:
+            if os.environ.get("AWS_ACCESS_KEY_ID") and os.environ.get("AWS_SECRET_ACCESS_KEY"):
+                from .sources.aws import CloudWatchS3
+
+                cloudwatch = CloudWatchS3(os.environ["AWS_ACCESS_KEY_ID"], os.environ["AWS_SECRET_ACCESS_KEY"])
+            else:
+                logging.getLogger("executor").warning("storage configured but AWS keys not set; "
+                                                      "showing Duplicati's figures only")
         app = create_web_app(config, runner, static, beszel=beszel, jellyfin=jellyfin, duplicati=duplicati,
-                             media=media)
+                             media=media, cloudwatch=cloudwatch)
         uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "1977")), **common)
 
     elif role == "runner":

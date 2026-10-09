@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from .config import Config
 from .monitor import Monitor, RunnerClient
 from .security import Guard
+from .sources.aws import CloudWatchS3
 from .sources.beszel import RANGES, Beszel
 from .sources.duplicati import Duplicati
 from .sources.jellyfin import Jellyfin
@@ -25,8 +26,8 @@ log = logging.getLogger("executor.web")
 def create_web_app(config: Config, runner: RunnerClient | None, static_dir: Path | None,
                    start_monitor: bool = True, beszel: Beszel | None = None,
                    jellyfin: Jellyfin | None = None, duplicati: Duplicati | None = None,
-                   media: MediaSources | None = None) -> FastAPI:
-    monitor = Monitor(config, runner, beszel, duplicati, media)
+                   media: MediaSources | None = None, cloudwatch: CloudWatchS3 | None = None) -> FastAPI:
+    monitor = Monitor(config, runner, beszel, duplicati, media, cloudwatch)
     posters: dict[tuple[str, int], tuple[bytes, str]] = {}
     history_cache: dict[tuple[str, str], tuple[float, dict]] = {}
     streams_cache: list = []  # [(monotonic time, body)]

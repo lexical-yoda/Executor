@@ -11,6 +11,7 @@ import httpx
 
 from .checks import Probe, http_probe, local_stats, ping, tcp_probe
 from .config import Config, Machine, Service
+from .sources.aws import CloudWatchS3
 from .sources.backups import evaluate_files
 from .sources.beszel import Beszel, summarize, to_series
 from .sources.duplicati import Duplicati
@@ -75,8 +76,11 @@ def service_status(service: Service, probe: Probe | None,
 class Monitor:
     def __init__(self, config: Config, runner: RunnerClient | None,
                  beszel: Beszel | None = None, duplicati: Duplicati | None = None,
-                 media: MediaSources | None = None) -> None:
+                 media: MediaSources | None = None, cloudwatch: CloudWatchS3 | None = None) -> None:
         self.config = config
+        self.cloudwatch = cloudwatch
+        self.storage: dict[str, dict] = {}
+        self.storage_errors: dict[str, str] = {}
         self.media = media
         self.media_settings = config.integrations.media
         self.requests: dict | None = None
@@ -125,6 +129,9 @@ class Monitor:
             self._tasks.append(asyncio.create_task(self._loop(self.poll_edge, self.edge_settings.interval)))
         if self.backup_settings:
             self._tasks.append(asyncio.create_task(self._loop(self.poll_backups, self.backup_settings.interval)))
+            if self.cloudwatch and self.backup_settings.storage:
+                self._tasks.append(asyncio.create_task(
+                    self._loop(self.poll_storage, self.backup_settings.storage_interval)))
         if self.media and self.media_settings:
             self._tasks.append(asyncio.create_task(self._loop(self.poll_media, self.media_settings.interval)))
         if self.beszel:
@@ -145,6 +152,8 @@ class Monitor:
             await self.duplicati.close()
         if self.media:
             await self.media.close()
+        if self.cloudwatch:
+            await self.cloudwatch.close()
 
     @staticmethod
     async def _loop(func, interval: float) -> None:
@@ -278,10 +287,44 @@ class Monitor:
             },
         }
 
+    async def poll_storage(self) -> None:
+        assert self.cloudwatch is not None and self.backup_settings is not None
+        for item in self.backup_settings.storage:
+            try:
+                self.storage[item.name] = await self.cloudwatch.bucket(
+                    item.bucket, item.region, item.storage_types, item.price_per_gib_month)
+                self.storage_errors.pop(item.name, None)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("storage metrics for %s failed: %s", item.name, exc)
+                self.storage_errors[item.name] = self._reason(exc)
+
+    def _storage(self) -> list[dict]:
+        assert self.backup_settings is not None
+        jobs = {j["name"]: j for j in (self.duplicati_status or {}).get("jobs", [])}
+        result = []
+        for item in self.backup_settings.storage:
+            job = jobs.get(item.duplicati_job or "")
+            duplicati_bytes = job["target_bytes"] if job else None
+            aws = self.storage.get(item.name)
+            fallback_cost = (round(duplicati_bytes / 2**30 * item.price_per_gib_month, 2)
+                             if duplicati_bytes is not None and item.price_per_gib_month is not None else None)
+            result.append({
+                "name": item.name,
+                "bucket": item.bucket,
+                "configured": self.cloudwatch is not None,
+                "error": None if self.cloudwatch is None else self.storage_errors.get(item.name),
+                "aws": aws,
+                "duplicati_bytes": duplicati_bytes,
+                "duplicati_versions": job["versions"] if job else None,
+                "fallback_cost": fallback_cost,
+            })
+        return result
+
     def _backups(self) -> dict | None:
         if not self.backup_settings:
             return None
         return {
+            "storage": self._storage(),
             "checked_at": self.backups_checked,
             "duplicati": {"configured": self.duplicati is not None, "ok": self.duplicati_error is None,
                           "error": self.duplicati_error, **(self.duplicati_status or {"jobs": [], "paused": False})},

@@ -1,5 +1,12 @@
-import { Archive, Database, FileArchive, Loader2 } from 'lucide-react'
-import type { BackupRun, BackupStatus, Backups as BackupsData, DuplicatiJob, FileBackupStatus } from '../api'
+import { Archive, CloudUpload, Database, FileArchive, Loader2 } from 'lucide-react'
+import type {
+  BackupRun,
+  BackupStatus,
+  Backups as BackupsData,
+  DuplicatiJob,
+  FileBackupStatus,
+  StorageStatus,
+} from '../api'
 import { ago, bytes, duration, until } from '../format'
 
 const LABEL: Record<BackupStatus, string> = {
@@ -154,6 +161,122 @@ function FileCard({ item, now, index }: { item: FileBackupStatus; now: number; i
   )
 }
 
+const STORAGE_LABEL: Record<string, string> = {
+  GlacierInstantRetrievalStorage: 'Glacier Instant Retrieval',
+  GlacierInstantRetrievalSizeOverhead: 'small-object overhead',
+  StandardStorage: 'Standard',
+}
+
+function signed(value: number | null): string {
+  if (value === null) return '—'
+  return `${value >= 0 ? '+' : '−'}${bytes(Math.abs(value))}`
+}
+
+function day(date: string): string {
+  return new Date(`${date}T00:00:00Z`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', timeZone: 'UTC' })
+}
+
+function SizeChart({ series }: { series: { date: string; bytes: number }[] }) {
+  if (series.length < 2) return null
+  const values = series.map((p) => p.bytes)
+  const max = Math.max(...values)
+  const min = Math.min(...values)
+  const span = Math.max(1, max - min)
+  // Leave headroom so a flat line sits mid-chart rather than on an edge.
+  const y = (v: number) => 34 - ((v - min) / span) * 28
+  const x = (i: number) => (i / (series.length - 1)) * 100
+  const line = series.map((p, i) => `${x(i).toFixed(2)},${y(p.bytes).toFixed(2)}`).join(' ')
+  return (
+    <div className="size-chart">
+      <svg viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true">
+        <defs>
+          <linearGradient id="size-fill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--data)" stopOpacity="0.35" />
+            <stop offset="100%" stopColor="var(--data)" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <polygon points={`0,40 ${line} 100,40`} fill="url(#size-fill)" />
+        <polyline points={line} fill="none" stroke="var(--data)" strokeWidth="1.2" vectorEffect="non-scaling-stroke" />
+      </svg>
+      <div className="daily-legend small muted num">
+        <span>{day(series[0].date)}</span>
+        <span>
+          {bytes(min)} – {bytes(max)}
+        </span>
+        <span>{day(series[series.length - 1].date)}</span>
+      </div>
+    </div>
+  )
+}
+
+function StorageCard({ item, now, index }: { item: StorageStatus; now: number; index: number }) {
+  const aws = item.aws
+  const fromAws = aws?.bytes != null
+  const status: BackupStatus = fromAws ? 'ok' : item.error ? 'warning' : 'unknown'
+  return (
+    <article className={`backup-card storage-card card bk-edge-${status}`} style={{ ['--i' as string]: index }}>
+      <div className="edge-head">
+        <CloudUpload size={16} />
+        <h3>{item.name}</h3>
+        <span className="small muted mono">{item.bucket}</span>
+      </div>
+
+      <div className="backup-main">
+        <span className="backup-big num">{bytes(fromAws ? aws!.bytes : item.duplicati_bytes)}</span>
+        <span className="small muted">
+          {fromAws
+            ? `stored in AWS, as of ${day(aws!.as_of!)}`
+            : item.duplicati_bytes !== null
+              ? 'as reported by Duplicati (AWS figures unavailable)'
+              : 'no figures yet'}
+        </span>
+      </div>
+
+      {fromAws && <SizeChart series={aws!.series} />}
+
+      <div className="stat-chips">
+        {fromAws && (
+          <>
+            <span className="stat-chip">
+              <span className="num">{signed(aws!.growth_30d)}</span> in 30 days
+            </span>
+            <span className="stat-chip">
+              <span className="num">{signed(aws!.growth_90d)}</span> in 90 days
+            </span>
+            {aws!.objects !== null && (
+              <span className="stat-chip">
+                <span className="num">{aws!.objects.toLocaleString()}</span> objects
+              </span>
+            )}
+          </>
+        )}
+        {(fromAws ? aws!.monthly_cost : item.fallback_cost) !== null && (
+          <span className="stat-chip" title="Storage only, at list price; requests and early deletion are extra">
+            ≈ <span className="num">${(fromAws ? aws!.monthly_cost! : item.fallback_cost!).toFixed(2)}</span>/month
+          </span>
+        )}
+        {fromAws && item.duplicati_bytes !== null && (
+          <span className="stat-chip" title="Duplicati's own count of what it stored">
+            Duplicati: <span className="num">{bytes(item.duplicati_bytes)}</span>
+            {item.duplicati_versions !== null && ` · ${item.duplicati_versions} versions`}
+          </span>
+        )}
+      </div>
+
+      {fromAws && Object.keys(aws!.by_type).length > 1 && (
+        <p className="small muted">
+          {Object.entries(aws!.by_type)
+            .map(([type, size]) => `${STORAGE_LABEL[type] ?? type} ${bytes(size)}`)
+            .join(' · ')}
+        </p>
+      )}
+      {item.error && <p className="small warn-text">AWS: {item.error}</p>}
+      {!item.configured && <p className="small muted">AWS key not set; showing Duplicati's figure.</p>}
+      {fromAws && <span className="small muted">Checked {ago(aws!.fetched_at * 1000, now)} · AWS updates daily</span>}
+    </article>
+  )
+}
+
 export function Backups({ backups, now }: { backups: BackupsData; now: number }) {
   const { duplicati, files } = backups
   return (
@@ -171,6 +294,9 @@ export function Backups({ backups, now }: { backups: BackupsData; now: number })
         ))}
         {files.map((item, i) => (
           <FileCard key={item.name} item={item} now={now} index={duplicati.jobs.length + i} />
+        ))}
+        {backups.storage.map((item, i) => (
+          <StorageCard key={item.name} item={item} now={now} index={duplicati.jobs.length + files.length + i} />
         ))}
       </div>
     </section>

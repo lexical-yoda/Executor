@@ -2023,6 +2023,24 @@ a.tile:hover .tile-link {
   box-shadow: 0 0 6px color-mix(in srgb, var(--bk) 60%, transparent);
 }
 
+.storage-card {
+  grid-column: span 2;
+}
+
+.size-chart svg {
+  display: block;
+  width: 100%;
+  height: 70px;
+  border-radius: 8px;
+  background: rgba(148, 163, 184, 0.04);
+}
+
+.size-chart .daily-legend {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+}
+
 .backup-log {
   margin: 0;
   padding: 6px 8px;
@@ -2056,6 +2074,9 @@ a.tile:hover .tile-link {
 @media (max-width: 640px) {
   .machines-rich {
     grid-template-columns: 1fr;
+  }
+  .storage-card {
+    grid-column: auto;
   }
   .machine-compact {
     min-width: 0;

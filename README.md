@@ -112,6 +112,14 @@ when it last finished, and what comes next.
   or `pattern` (the newest of a rotating set), `max_age_hours`, an optional
   `error_file` whose content means failure, and an optional `log_file` whose
   last line is shown.
+- **S3 storage** (for example a Glacier archive): size, 30- and 90-day
+  growth, a size-over-time chart, object count and an estimated monthly cost,
+  from the daily storage metrics S3 publishes to CloudWatch (kept for 15
+  months, so the chart has history from the start). The key needs only
+  `cloudwatch:GetMetricStatistics`, which reads numbers and cannot touch any
+  data; that action accepts no resource or condition limits in IAM. Requests
+  are signed with SigV4 using the standard library. Without a key, the card
+  shows the linked Duplicati job's stored size and estimate instead.
 
 ### Actions
 
@@ -257,6 +265,6 @@ Tests: `cd backend && ../.venv/bin/python -m pytest -q`. Tests that check a real
 2. **Phase 2 (in progress):** machine stats and history from Beszel (done);
    bandwidth and certificate expiry (done); more actions, with ssh and http
    steps and an active-stream warning (done); backups panel (done); media
-   panels (done); Glacier storage size and growth.
+   panels (done); S3 storage size and growth (done).
 3. **Phase 3:** a media section: now playing, active users, a globe of login
    locations, and per-user location history.

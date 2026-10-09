@@ -83,6 +83,16 @@ integrations:
         pattern: "config-*.tar.gz"
         error_file: last-error.txt
         log_file: history.log
+    # S3 buckets whose size and growth come from AWS's daily CloudWatch
+    # storage metrics (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY in .env, a key
+    # allowed only cloudwatch:GetMetricStatistics). Without a key, the
+    # Duplicati job's stored size is shown instead.
+    storage:
+      - name: Offsite archive
+        bucket: example-backup-bucket
+        region: us-east-1
+        price_per_gib_month: 0.004   # Glacier Instant Retrieval list price
+        duplicati_job: Offsite - weekly
 
 # Display order of service groups. Groups not listed here follow in order of use.
 groups:
