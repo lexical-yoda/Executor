@@ -3,6 +3,7 @@ import {
   Archive,
   Box,
   Cpu,
+  Database,
   Download,
   Images,
   Inbox,
@@ -10,6 +11,7 @@ import {
   Play,
   Power,
   ScrollText,
+  ShieldBan,
   ShieldCheck,
   Zap,
 } from 'lucide-react'
@@ -31,6 +33,8 @@ const ICONS: Record<string, typeof Activity> = {
   action: Zap,
   certificate: ShieldCheck,
   photos: Images,
+  storage: Database,
+  dns: ShieldBan,
   system: Power,
 }
 

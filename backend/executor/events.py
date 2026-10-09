@@ -73,6 +73,9 @@ class Tracker:
         self.runs_seen: dict[str, str] | None = None
         self.certs_seen: dict[str, float] | None = None
         self.photos_seen: dict | None = None
+        self.pools_seen: dict[str, dict] | None = None
+        self.nas_alerts_seen: set[str] | None = None
+        self.blocking_seen: str | None = None
         # Library counts when the current burst of uploads (or deletions) began.
         self._photo_burst: dict | None = None
 
@@ -269,6 +272,58 @@ class Tracker:
             title = f"{r['title']} ({r['year']})" if r.get("year") else r["title"]
             self.emit("request", "info", f"requested {title}", "TV" if r.get("kind") == "tv" else "Movie",
                       actor=r.get("requested_by"), ref=f"request:{rid}", when=now)
+
+    def dns(self, status: dict, now: float | None = None) -> None:
+        """Pi-hole's blocking switched off or back on."""
+        now = now or time.time()
+        blocking = status.get("blocking")
+        before, self.blocking_seen = self.blocking_seen, blocking
+        if before is None or blocking is None or blocking == before:
+            return
+        if blocking == "disabled":
+            timer = status.get("blocking_timer")
+            self.emit("dns", "warn", "Pi-hole stopped blocking ads",
+                      f"Back on in {_span(timer)}" if timer else None, ref="dns", when=now)
+        elif blocking == "enabled":
+            self.emit("dns", "good", "Pi-hole is blocking ads again", None, ref="dns", when=now)
+
+    def storage(self, health: dict, now: float | None = None) -> None:
+        """Pool state changes, finished scrubs and new TrueNAS alerts."""
+        now = now or time.time()
+        pools = {p["name"]: p for p in health.get("pools") or []}
+        before = self.pools_seen
+        self.pools_seen = pools
+        if before is not None:
+            for name, pool in pools.items():
+                old = before.get(name)
+                ref = f"pool:{name}"
+                if not old:
+                    continue
+                if pool["status"] != old["status"]:
+                    good = pool["status"] == "ONLINE" and pool["healthy"]
+                    self.emit("storage", "good" if good else "bad", f"Pool {name} is {pool['status'].lower()}",
+                              pool.get("detail"), ref=ref, when=now)
+                scan, old_scan = pool.get("scan") or {}, old.get("scan") or {}
+                if scan.get("state") == "FINISHED" and scan.get("finished") and \
+                        scan.get("finished") != old_scan.get("finished"):
+                    errors = scan.get("errors") or 0
+                    word = (scan.get("function") or "scrub").lower()
+                    self.emit("storage", "bad" if errors else "good",
+                              f"{word.capitalize()} of {name} finished",
+                              f"{errors} errors" if errors else "No errors", ref=ref, when=now)
+        alerts = health.get("alerts")
+        if alerts is None:
+            return
+        current = {a["id"]: a for a in alerts if a.get("id")}
+        seen = self.nas_alerts_seen
+        self.nas_alerts_seen = set(current)
+        if seen is None:
+            return
+        for alert_id in current.keys() - seen:
+            a = current[alert_id]
+            level = {"INFO": "info", "NOTICE": "info", "WARNING": "warn"}.get(a.get("level") or "", "bad")
+            self.emit("storage", level, f"TrueNAS: {a.get('klass') or 'alert'}", a.get("text") or None,
+                      ref="nas", when=now)
 
     def photos(self, status: dict, now: float | None = None) -> None:
         """Photo library changes, a release to update to, and jobs that failed."""

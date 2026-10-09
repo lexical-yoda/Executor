@@ -1,4 +1,5 @@
 import type { Snapshot } from './api'
+import { poolTone, tempTone } from './components/Storage'
 import type { Deck, DrawerRef } from './route'
 
 export type AlertLevel = 'bad' | 'warn'
@@ -171,6 +172,81 @@ export function collectAlerts(s: Snapshot | null): Alert[] {
         ref: null,
       })
     }
+  }
+  const nas = s.truenas
+  if (nas && (!nas.configured || nas.error)) {
+    add({
+      key: 'truenas',
+      level: 'warn',
+      deck: 'engineering',
+      title: 'Storage health unavailable',
+      detail: nas.configured ? nas.error : 'TRUENAS_API_KEY is not set',
+      ref: { kind: 'nas', id: '' },
+    })
+  }
+  for (const pool of nas?.pools ?? []) {
+    const tone = poolTone(pool)
+    if (tone !== 'up') {
+      const problem =
+        pool.status !== 'ONLINE' || !pool.healthy
+          ? `is ${pool.status.toLowerCase()}`
+          : pool.scan?.errors
+            ? `scrub found ${pool.scan.errors} errors`
+            : 'reports disk errors'
+      add({
+        key: `pool:${pool.name}`,
+        // Red when the pool is not online or a scrub found errors; amber for disk error counts.
+        level: pool.status !== 'ONLINE' || !pool.healthy || pool.scan?.errors ? 'bad' : 'warn',
+        deck: 'engineering',
+        title: `Pool ${pool.name} ${problem}`,
+        detail: pool.detail,
+        ref: { kind: 'pool', id: pool.name },
+      })
+    }
+  }
+  for (const disk of nas?.disks ?? []) {
+    const tone = tempTone(disk, disk.temp)
+    if (tone === 'degraded' || tone === 'down') {
+      add({
+        key: `disk:${disk.name}`,
+        level: tone === 'down' ? 'bad' : 'warn',
+        deck: 'engineering',
+        title: `Disk ${disk.name} is running hot (${Math.round(disk.temp!)} °C)`,
+        detail: disk.model,
+        ref: { kind: 'disk', id: disk.name },
+      })
+    }
+  }
+  for (const a of nas?.alerts ?? []) {
+    if (a.level === 'INFO' || a.level === 'NOTICE') continue
+    add({
+      key: `nas:${a.id}`,
+      level: a.level === 'WARNING' ? 'warn' : 'bad',
+      deck: 'engineering',
+      title: `TrueNAS: ${a.klass}`,
+      detail: a.text,
+      ref: { kind: 'nas', id: '' },
+    })
+  }
+  const dns = s.pihole
+  if (dns && (!dns.configured || dns.error)) {
+    add({
+      key: 'pihole',
+      level: 'warn',
+      deck: 'engineering',
+      title: 'Pi-hole figures unavailable',
+      detail: dns.configured ? dns.error : 'PIHOLE_PASSWORD is not set',
+      ref: { kind: 'dns', id: '' },
+    })
+  } else if (dns?.ok && dns.blocking && dns.blocking !== 'enabled') {
+    add({
+      key: 'pihole-blocking',
+      level: 'warn',
+      deck: 'engineering',
+      title: 'Pi-hole is not blocking ads',
+      detail: dns.blocking_timer ? `Back on by itself in ${Math.round(dns.blocking_timer / 60)} min` : null,
+      ref: { kind: 'dns', id: '' },
+    })
   }
   const p = s.photos
   if (p && (!p.configured || p.error)) {

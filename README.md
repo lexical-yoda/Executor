@@ -35,8 +35,8 @@ Five decks, switched by tabs (a bottom bar on phones) or the keys 1 to 5:
 | Deck | Shows |
 |---|---|
 | Bridge | The map with live streams, and tiles summarising every other deck, the event log and the weekly recap |
-| Engineering | Machines, the edge (bandwidth and certificates) and services |
-| Holonet | The map explorer, now playing, requests, downloads, places and viewers |
+| Engineering | Machines, storage health, DNS, the edge (bandwidth and certificates) and services |
+| Holonet | The map explorer, now playing, requests, downloads, the media library, places and viewers |
 | Archives | The photo library, backup jobs, file backups and off-site storage |
 | Armory | Every action, grouped, and the recent runs |
 
@@ -173,6 +173,47 @@ activity covers the key owner's own account. Anything the key may not read is
 left out rather than failing the card. Executor records the library size once
 a day, so the growth figures fill in from the first day it runs.
 
+### Media library (optional, with Jellyfin)
+
+A Library card on the Holonet deck: movies, shows and episodes per Jellyfin
+library (missing episodes Jellyfin knows of but has no file for are left
+out), each library's size on disk, and a strip of recent additions with
+posters. Sizes come from the runner, which measures the folders listed under
+`sizes:` in `actions.yaml` (inside `LIBRARY_DIR`, mounted read-only at
+`/library`) and reports only their total size and file count; map Jellyfin
+libraries to them with `integrations.jellyfin.library_folders`. Jellyfin
+itself knows the file size of only some items. Posters are proxied like
+request posters, for the recent additions only. Executor records the totals
+daily for a growth chart.
+
+### Storage health (optional, via TrueNAS)
+
+A Storage section on the Engineering deck: each pool's state, usable space,
+last scrub and its errors, layout, and its disks with their temperatures;
+disks outside data pools; TrueNAS's own alerts; and usage per dataset. Pool,
+disk and TrueNAS drawers add the details, including each disk's average and
+highest temperature over the last week. A pool that is not online or whose
+scrub found errors, a hot disk (hard drives from 50 °C, SSDs from 70 °C) and
+TrueNAS warnings raise alerts; pool changes, finished scrubs and new TrueNAS
+alerts go to the event log.
+
+Create a TrueNAS user with the Read-only Admin role (password and shell
+off) and an API key for it, and put the key in `TRUENAS_API_KEY`. Executor
+speaks TrueNAS's JSON-RPC API over `wss://`: TrueNAS revokes any API key that
+is sent over plain HTTP. TrueNAS 25.10 no longer offers SMART results
+through its API; a failing disk shows as a TrueNAS alert.
+
+### DNS (optional, via Pi-hole)
+
+A DNS card on the Engineering deck: queries and blocked queries today, the
+share blocked, cache hits, active clients, blocklist size, the most blocked
+domains and a 24-hour chart; the drawer adds the busiest clients (their names
+blur in presentation mode). Pi-hole's blocking switched off or on goes to the
+event log, and an alert shows while it is off. Pi-hole v6 has no read-only
+login: create an app password (Settings > Web interface / API, Expert mode)
+and put it in `PIHOLE_PASSWORD`. Executor only reads, and logs out of its
+session when it stops.
+
 ### Now playing and location history (optional)
 
 With the `jellyfin` integration, the Holonet deck shows who is watching
@@ -246,7 +287,8 @@ one SQLite file:
 - **Event log:** services and machines going down and recovering, containers
   stopping or restarting, backups finishing, downloads grabbed and finished,
   new requests, streams starting, actions run, certificates renewed, photos
-  added to the library and Immich jobs failing. A
+  added to the library and Immich jobs failing, pool changes, scrubs and
+  TrueNAS alerts, and Pi-hole's blocking switched off or on. A
   service change counts once it holds for two checks. Kept 180 days.
 - **Uptime:** every service check in five-minute buckets, shown as uptime bars
   in each service's details. Kept 35 days.
@@ -259,6 +301,8 @@ one SQLite file:
   uptime, incidents and Glacier growth, against the week before).
 - **Photo library size:** one reading a day of the Immich library's size and
   counts, for its growth chart. Kept 400 days.
+- **Media library size:** one reading a day of the Jellyfin libraries'
+  counts and sizes, for their growth chart. Kept 400 days.
 
 Without the folder the event log is kept in memory only, and the recap,
 uptime bars and long ranges are unavailable.
@@ -477,4 +521,4 @@ Tests: `cd backend && ../.venv/bin/python -m pytest -q`. Tests that check a real
    event log, uptime history, a year of machine history, the weekly recap and
    the demo tour (done); stack discovery, so the service list follows the
    stacks that actually run (done); the settings page (done); the Immich photo
-   library (done).
+   library (done); the media library, storage health and DNS (done).

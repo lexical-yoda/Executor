@@ -6,7 +6,10 @@ import { useApp } from '../state'
 import { ActionDrawer, RunDrawer } from './ActionKit'
 import { BackupJobDrawer, FileBackupDrawer, StorageDrawer } from './Backups'
 import { BandwidthDrawer, CertificateDrawer } from './Edge'
+import { DnsDrawer } from './Dns'
 import { FeedDrawer } from './Feed'
+import { LibraryDrawer } from './Library'
+import { DiskDrawer, NasDrawer, PoolDrawer } from './Storage'
 import { DownloadDrawer, PlaceDrawer, RequestDrawer, RouteDrawer, StreamDrawer, UserDrawer } from './MediaDrawers'
 import { PhotosDrawer } from './Photos'
 import { RecapDrawer } from './Recap'
@@ -73,6 +76,16 @@ function content(d: DrawerRef): ReactNode {
       return <StorageDrawer name={d.id} />
     case 'photos':
       return <PhotosDrawer />
+    case 'library':
+      return <LibraryDrawer />
+    case 'pool':
+      return <PoolDrawer name={d.id} />
+    case 'disk':
+      return <DiskDrawer name={d.id} />
+    case 'nas':
+      return <NasDrawer />
+    case 'dns':
+      return <DnsDrawer />
     case 'action':
       return <ActionDrawer id={d.id} />
     case 'run':

@@ -21,6 +21,9 @@ from .sources.beszel import Beszel, summarize, to_series
 from .sources.duplicati import Duplicati
 from .sources.edge import check_certificate, fetch_bandwidth
 from .sources.immich import Immich
+from .sources.jellyfin import Jellyfin
+from .sources.pihole import PiHole
+from .sources.truenas import TrueNAS
 from .sources.media import MediaSources
 from .store import Store
 
@@ -76,6 +79,12 @@ class RunnerClient:
         response.raise_for_status()
         return response.json()
 
+    async def sizes(self) -> dict[str, dict]:
+        """Sizes of the runner's sized folders, by id."""
+        response = await self._client.get("/sizes")
+        response.raise_for_status()
+        return {f["id"]: f for f in response.json()}
+
     async def stacks(self) -> list[str] | None:
         """Stack folder names, or None when the runner has no stacks folder (or cannot read it)."""
         response = await self._client.get("/stacks")
@@ -112,8 +121,27 @@ class Monitor:
                  beszel: Beszel | None = None, duplicati: Duplicati | None = None,
                  media: MediaSources | None = None, cloudwatch: CloudWatchS3 | None = None,
                  history: MediaHistory | None = None, store: Store | None = None,
-                 immich: Immich | None = None) -> None:
+                 immich: Immich | None = None, jellyfin: Jellyfin | None = None,
+                 truenas: TrueNAS | None = None, pihole: PiHole | None = None) -> None:
         self.config = config
+        # DNS from Pi-hole: queries, blocking, top domains and clients.
+        self.pihole = pihole
+        self.pihole_settings = config.integrations.pihole
+        self.dns: dict | None = None
+        self.dns_error: str | None = None if pihole else "PIHOLE_PASSWORD not set"
+        self.dns_checked: float | None = None
+        # Storage health from TrueNAS itself: pools, scrubs, disks, alerts.
+        self.truenas = truenas
+        self.truenas_settings = config.integrations.truenas
+        self.storage_health: dict | None = None
+        self.storage_health_error: str | None = None if truenas else "TRUENAS_API_KEY not set"
+        self.storage_health_checked: float | None = None
+        # The media library: counts and recent additions from Jellyfin, sizes
+        # measured by the runner; refreshed hourly.
+        self.jellyfin = jellyfin
+        self.library: dict | None = None
+        self.library_error: str | None = None
+        self.library_checked: float | None = None
         self.history = history
         self.store = store
         self.tracker = Tracker(store)
@@ -211,6 +239,12 @@ class Monitor:
                     self._loop(self.poll_storage, self.backup_settings.storage_interval)))
         if self.media and self.media_settings:
             self._tasks.append(asyncio.create_task(self._loop(self.poll_media, self.media_settings.interval)))
+        if self.jellyfin:
+            self._tasks.append(asyncio.create_task(self._loop(self.poll_library, 3600)))
+        if self.pihole and self.pihole_settings:
+            self._tasks.append(asyncio.create_task(self._loop(self.poll_pihole, self.pihole_settings.interval)))
+        if self.truenas and self.truenas_settings:
+            self._tasks.append(asyncio.create_task(self._loop(self.poll_truenas, self.truenas_settings.interval)))
         if self.immich and self.immich_settings:
             self._tasks.append(asyncio.create_task(self._loop(self.poll_immich, self.immich_settings.interval)))
         if self.history:
@@ -245,6 +279,8 @@ class Monitor:
             await self.cloudwatch.close()
         if self.immich:
             await self.immich.close()
+        if self.pihole:
+            await self.pihole.close()
 
     @staticmethod
     async def _loop(func, interval: float) -> None:
@@ -645,6 +681,112 @@ class Monitor:
             })
         return result
 
+    async def poll_pihole(self) -> None:
+        assert self.pihole is not None
+        try:
+            self.dns = await self.pihole.status()
+            self.dns_error = None
+        except Exception as exc:  # noqa: BLE001
+            log.warning("pi-hole failed: %s", exc)
+            self.dns_error = self._reason(exc)
+            return
+        self.dns_checked = time.time()
+        self.tracker.dns(self.dns)
+
+    def _pihole(self) -> dict | None:
+        if not self.pihole_settings:
+            return None
+        return {"configured": self.pihole is not None, "ok": self.dns_error is None and self.dns is not None,
+                "error": self.dns_error, "checked_at": self.dns_checked, **(self.dns or {})}
+
+    async def poll_truenas(self) -> None:
+        assert self.truenas is not None
+        try:
+            self.storage_health = await self.truenas.status()
+            self.storage_health_error = None
+        except Exception as exc:  # noqa: BLE001
+            log.warning("truenas failed: %s", exc)
+            self.storage_health_error = self._reason(exc)
+            return
+        self.storage_health_checked = time.time()
+        self.tracker.storage(self.storage_health)
+
+    def _truenas(self) -> dict | None:
+        if not self.truenas_settings:
+            return None
+        return {"configured": self.truenas is not None,
+                "ok": self.storage_health_error is None and self.storage_health is not None,
+                "error": self.storage_health_error, "checked_at": self.storage_health_checked,
+                **(self.storage_health or {"system": None, "pools": [], "disks": None, "alerts": None,
+                                           "datasets": None})}
+
+    async def poll_library(self) -> None:
+        assert self.jellyfin is not None
+        try:
+            libraries = await self.jellyfin.libraries()
+            latest = await self.jellyfin.latest()
+        except Exception as exc:  # noqa: BLE001
+            log.warning("jellyfin library failed: %s", exc)
+            self.library_error = self._reason(exc)
+            return
+        sizes: dict[str, dict] = {}
+        folders = self.config.integrations.jellyfin.library_folders if self.config.integrations.jellyfin else {}
+        if folders and self.runner:
+            try:
+                sizes = await self.runner.sizes()
+            except Exception as exc:  # noqa: BLE001 - counts still stand without sizes
+                log.warning("runner folder sizes failed: %s", exc)
+        for library in libraries:
+            measured = sizes.get(folders.get(library["name"], ""))
+            library["bytes"] = measured["bytes"] if measured and measured.get("ok") else None
+            library["files"] = measured["files"] if measured and measured.get("ok") else None
+        totals = {k: sum(lib.get(k) or 0 for lib in libraries)
+                  for k in ("movies", "series", "episodes", "collections")}
+        sized = [lib["bytes"] for lib in libraries if lib["bytes"] is not None]
+        totals["bytes"] = sum(sized) if sized else None
+        self.library = {"libraries": libraries, "totals": totals, "latest": latest}
+        self.library_error = None
+        self.library_checked = time.time()
+        if self.store:
+            today = date.today().isoformat()
+            for key in ("movies", "series", "episodes", "bytes"):
+                if totals[key] is not None:
+                    self._safely(self.store.set_daily, today, f"library_{key}", totals[key])
+            for library in libraries:
+                if library["bytes"] is not None:
+                    self._safely(self.store.set_daily, today, f"library_bytes:{library['id']}", library["bytes"])
+
+    def library_poster_ids(self) -> set[str]:
+        """Items whose posters the page may ask for: the recent additions only."""
+        return {item["id"] for item in (self.library or {}).get("latest") or []}
+
+    def library_history(self) -> dict:
+        """Daily totals of the media library, for its growth chart."""
+        first = (date.today() - timedelta(days=400)).isoformat()
+        if not self.store:
+            return {"days": []}
+        columns = {k: dict(self.store.daily_series(f"library_{k}", first))
+                   for k in ("bytes", "movies", "series", "episodes")}
+        days = sorted(set().union(*columns.values()))
+        return {"days": [{"date": d, **{k: columns[k].get(d) for k in columns}} for d in days]}
+
+    def _library(self) -> dict | None:
+        if not self.jellyfin:
+            return None
+        growth = None
+        if self.store and self.library and self.library["totals"].get("bytes") is not None:
+            try:
+                series = [{"date": d, "bytes": v} for d, v in self.store.daily_series(
+                    "library_bytes", (date.today() - timedelta(days=40)).isoformat())]
+                if series:
+                    growth = {"tracked_since": series[0]["date"], "d7": grown_since(series, date.today(), 7),
+                              "d30": grown_since(series, date.today(), 30)}
+            except Exception as exc:  # noqa: BLE001
+                log.warning("library growth failed: %s", exc)
+        return {"ok": self.library_error is None and self.library is not None, "error": self.library_error,
+                "checked_at": self.library_checked, **(self.library or {"libraries": [], "totals": {}, "latest": []}),
+                "growth": growth}
+
     async def poll_immich(self) -> None:
         assert self.immich is not None
         try:
@@ -912,4 +1054,7 @@ class Monitor:
             "media": self._media(),
             "jellyfin": self._jellyfin(),
             "photos": self._photos(),
+            "library": self._library(),
+            "truenas": self._truenas(),
+            "pihole": self._pihole(),
         }

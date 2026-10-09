@@ -178,6 +178,15 @@ function HolonetTile({ s }: { s: Snapshot }) {
           </div>
         )}
       </div>
+      {s.library?.ok && (
+        <RowButton className="tile-library" onClick={() => open('library')}>
+          <span className="small muted">Library</span>
+          <span className="small num">
+            {(s.library.totals.movies ?? 0).toLocaleString()} movies · {(s.library.totals.series ?? 0).toLocaleString()} shows
+            {s.library.totals.bytes != null ? ` · ${bytes(s.library.totals.bytes)}` : ''}
+          </span>
+        </RowButton>
+      )}
       {req && req.pending.length > 0 && (
         <div className="poster-strip">
           {req.pending.slice(0, 6).map((r) => (

@@ -31,9 +31,10 @@ read the git-ignored `PLAN.local.md` (plan, decisions, state and history) and
   `web/scripts/map-assets.sh` (pinned commit) into `web/public/map/`. Never
   commit tiles or map assets, and never point the map at a hosted tile service.
 - **The runner reports names, never contents or paths from requests.** Watched
-  folders (`files:`) and the stacks folder (`stacks_dir:`) are fixed in
-  `actions.yaml`; it reports file names, sizes, times, configured log tails and
-  stack folder names only.
+  folders (`files:`), sized folders (`sizes:`) and the stacks folder
+  (`stacks_dir:`) are fixed in `actions.yaml`; it reports file names, sizes,
+  times, configured log tails, folder totals and stack folder names only.
+  Run output is scrubbed of secret values and `key=value` credentials.
 - **The settings page changes presentation only** (service names, groups,
   links, visibility, group order), stored in the web data folder. Never let it
   edit actions, checks that run commands, or anything the runner reads.

@@ -160,6 +160,9 @@ class JellyfinIntegration(BaseModel):
     # the same home as the server, so they are placed at `origin`. Checked
     # hourly; off when unset.
     home_ip_url: str | None = None
+    # Jellyfin library name -> id of a folder under `sizes:` in actions.yaml,
+    # whose size the runner measures (Jellyfin knows few file sizes itself).
+    library_folders: dict[str, Slug] = {}
 
 
 class DuplicatiIntegration(BaseModel):
@@ -242,6 +245,34 @@ class ImmichIntegration(BaseModel):
     interval: float = 300
 
 
+class PiHoleIntegration(BaseModel):
+    # Pi-hole v6 web server as seen from the web container. The app password
+    # comes from the environment (PIHOLE_PASSWORD), never from this file.
+    url: str
+    timeout: float = 8.0
+    interval: float = 60
+
+
+class TrueNASIntegration(BaseModel):
+    # JSON-RPC websocket, as seen from the web container. Must be wss://:
+    # TrueNAS revokes an API key that is ever sent over plain HTTP. The key
+    # comes from the environment (TRUENAS_API_KEY), never from this file.
+    url: str
+    # The key's user (for the newer login), if known.
+    username: str | None = None
+    # TrueNAS usually serves a self-signed certificate.
+    verify_tls: bool = False
+    timeout: float = 15.0
+    interval: float = 300
+
+    @field_validator("url")
+    @classmethod
+    def _secure(cls, value: str) -> str:
+        if not value.startswith("wss://"):
+            raise ValueError("the TrueNAS url must start with wss:// (TrueNAS revokes keys sent over plain HTTP)")
+        return value
+
+
 class Discovery(BaseModel):
     # Stacks found from Docker itself (compose labels) and the runner's stacks
     # folder. A stack none of whose containers a configured service lists
@@ -268,6 +299,8 @@ class Integrations(BaseModel):
     backups: BackupsIntegration | None = None
     media: MediaIntegration | None = None
     immich: ImmichIntegration | None = None
+    truenas: TrueNASIntegration | None = None
+    pihole: PiHoleIntegration | None = None
 
 
 class Config(BaseModel):
@@ -376,6 +409,13 @@ class WatchedFolder(BaseModel):
     tail: list[Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9._-]+$")]] = []
 
 
+class SizedFolder(BaseModel):
+    # A folder whose total size and file count the runner may report (for
+    # example a media library), fixed here and never taken from a request.
+    id: Slug
+    path: str
+
+
 class ActionsConfig(BaseModel):
     ssh: dict[str, SshTarget] = {}
     files: list[WatchedFolder] = []
@@ -383,6 +423,7 @@ class ActionsConfig(BaseModel):
     # as Dockhand keep them). The runner reports the subfolder names only, so
     # the page can tell a stopped stack from a removed one.
     stacks_dir: str | None = None
+    sizes: list[SizedFolder] = []
     actions: list[Action] = []
 
     @model_validator(mode="after")
@@ -393,6 +434,9 @@ class ActionsConfig(BaseModel):
         folders = [f.id for f in self.files]
         if len(folders) != len(set(folders)):
             raise ValueError("duplicate watched folder id")
+        sized = [f.id for f in self.sizes]
+        if len(sized) != len(set(sized)):
+            raise ValueError("duplicate sized folder id")
         for action in self.actions:
             for step in action.steps:
                 if step.ssh and step.ssh.target not in self.ssh:

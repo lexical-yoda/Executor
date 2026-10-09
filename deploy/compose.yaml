@@ -38,6 +38,10 @@ services:
       QBITTORRENT_PASSWORD: ${QBITTORRENT_PASSWORD:-}
       # Optional read-only Immich API key, for the photo library card.
       IMMICH_API_KEY: ${IMMICH_API_KEY:-}
+      # Optional TrueNAS API key of a Read-only Administrator, for storage health.
+      TRUENAS_API_KEY: ${TRUENAS_API_KEY:-}
+      # Optional Pi-hole app password, for the DNS card.
+      PIHOLE_PASSWORD: ${PIHOLE_PASSWORD:-}
       # Optional MaxMind account for the GeoLite2 City database (free).
       MAXMIND_ACCOUNT_ID: ${MAXMIND_ACCOUNT_ID:-}
       MAXMIND_LICENSE_KEY: ${MAXMIND_LICENSE_KEY:-}
@@ -97,6 +101,9 @@ services:
       - ${EXECUTOR_DIR}/ssh:/ssh:ro
       # Folders the backups panel reports on (`files:` in actions.yaml), read-only.
       - ${WATCH_DIR:-/var/empty}:/watch:ro
+      # Folders whose total size the page shows (`sizes:` in actions.yaml), such
+      # as media libraries, read-only.
+      - ${LIBRARY_DIR:-/var/empty}:/library:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     # The web container reaches the runner only over `internal`. `egress` gives

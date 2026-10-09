@@ -53,6 +53,11 @@ integrations:
     # EXECUTOR_WEB_DATA (0 turns it off). Locations are looked up locally in
     # the free DB-IP Lite database; addresses are never sent anywhere.
     history_days: 90
+    # Optional: library sizes for the media library card, measured by the
+    # runner. Jellyfin library name -> folder id under `sizes:` in actions.yaml.
+    library_folders:
+      Movies: movies
+      Shows: shows
     # On the map, streams flow from origin (the media server) to hub (a
     # public relay or reverse proxy) and out to viewers. Both optional; with
     # `machine`, the marker shows that machine's health and opens its details.
@@ -83,6 +88,15 @@ integrations:
       url: http://host.docker.internal:7878
     qbittorrent:
       url: http://host.docker.internal:8080
+  # Optional. Storage health from TrueNAS: pools, scrubs, disks, alerts. The
+  # key (TRUENAS_API_KEY) belongs to a user with the Read-only Administrator
+  # role. wss:// only: TrueNAS revokes keys sent over plain HTTP.
+  truenas:
+    url: wss://host.docker.internal/api/current
+    username: executor
+  # Optional. DNS card from Pi-hole v6 (app password in PIHOLE_PASSWORD).
+  pihole:
+    url: http://host.docker.internal:8053
   # Optional. Photo library card: size, counts, jobs and activity from Immich.
   # The key (IMMICH_API_KEY in .env) belongs to an admin and needs only
   # server.statistics, server.storage, server.versionCheck, queue.read and

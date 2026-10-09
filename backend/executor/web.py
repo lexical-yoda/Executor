@@ -25,6 +25,8 @@ from .sources.aws import CloudWatchS3
 from .sources.beszel import RANGES, Beszel
 from .sources.duplicati import Duplicati
 from .sources.immich import Immich
+from .sources.pihole import PiHole
+from .sources.truenas import TrueNAS
 from .sources.jellyfin import Jellyfin
 from .sources.media import MediaSources
 from .store import Store
@@ -120,9 +122,11 @@ def create_web_app(config: Config, runner: RunnerClient | None, static_dir: Path
                    jellyfin: Jellyfin | None = None, duplicati: Duplicati | None = None,
                    media: MediaSources | None = None, cloudwatch: CloudWatchS3 | None = None,
                    history: MediaHistory | None = None, store: Store | None = None,
-                   tiles_dir: Path | None = None, immich: Immich | None = None) -> FastAPI:
+                   tiles_dir: Path | None = None, immich: Immich | None = None,
+                   truenas: TrueNAS | None = None, pihole: PiHole | None = None) -> FastAPI:
     store = store or (history.store if history else None)
-    monitor = Monitor(config, runner, beszel, duplicati, media, cloudwatch, history, store, immich)
+    monitor = Monitor(config, runner, beszel, duplicati, media, cloudwatch, history, store, immich, jellyfin,
+                      truenas, pihole)
     tile_name = re.compile(r"^[a-z0-9][a-z0-9-]{0,40}$")
     recap_cache: dict[int, tuple[float, dict]] = {}
     user_id_pattern = re.compile(r"^[0-9a-f]{32}$")
@@ -371,6 +375,33 @@ def create_web_app(config: Config, runner: RunnerClient | None, static_dir: Path
         content, content_type = posters[key]
         return Response(content, media_type=content_type,
                         headers={"Cache-Control": "private, max-age=86400"})
+
+    @app.get("/api/media/library/history")
+    async def library_history() -> dict:
+        if not monitor.jellyfin:
+            raise HTTPException(404, "Jellyfin is not configured.")
+        return monitor.library_history()
+
+    library_posters: dict[str, tuple[bytes, str]] = {}
+
+    @app.get("/api/media/library/poster/{item_id}")
+    async def library_poster(item_id: str) -> Response:
+        """Posters of recent additions, proxied like request posters: only items
+        in the server's own list of recent additions are served."""
+        if not user_id_pattern.match(item_id) or not monitor.jellyfin or item_id not in monitor.library_poster_ids():
+            raise HTTPException(404)
+        if item_id not in library_posters:
+            try:
+                image = await monitor.jellyfin.poster(item_id)
+            except Exception:  # noqa: BLE001
+                image = None
+            if image is None:
+                raise HTTPException(404)
+            if len(library_posters) >= 64:
+                library_posters.pop(next(iter(library_posters)))
+            library_posters[item_id] = image
+        content, content_type = library_posters[item_id]
+        return Response(content, media_type=content_type, headers={"Cache-Control": "private, max-age=86400"})
 
     @app.get("/api/actions")
     async def actions() -> JSONResponse:

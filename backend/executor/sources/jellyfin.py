@@ -121,6 +121,45 @@ def describe_library_item(item: dict) -> dict:
             "runtime_s": round(runtime / 10_000_000) if runtime else None}
 
 
+# What each kind of library counts: Jellyfin collection type -> (label, item types).
+LIBRARY_COUNTS = {
+    "movies": [("movies", "Movie")],
+    "tvshows": [("series", "Series"), ("episodes", "Episode")],
+    "boxsets": [("collections", "BoxSet")],
+    "music": [("albums", "MusicAlbum"), ("songs", "Audio")],
+}
+POSTER_TYPES = ("image/jpeg", "image/png", "image/webp")
+
+
+def summarize_latest(items: list[dict], limit: int = 12) -> list[dict]:
+    """Newest additions, newest first: movies one by one, episodes grouped by show."""
+    found: list[dict] = []
+    shows: dict[str, dict] = {}
+    for item in items:
+        added = item.get("DateCreated")
+        if item.get("Type") == "Episode" and item.get("SeriesId"):
+            series_id = item["SeriesId"].replace("-", "")
+            if series_id in shows:
+                shows[series_id]["count"] += 1
+                continue
+            if len(found) >= limit:
+                continue
+            season, number = item.get("ParentIndexNumber"), item.get("IndexNumber")
+            code = f"S{season:02d}E{number:02d}" if isinstance(season, int) and isinstance(number, int) else None
+            shows[series_id] = {"id": series_id, "title": item.get("SeriesName") or "Unknown show",
+                                "kind": "series", "detail": code, "count": 1, "added": added,
+                                "year": item.get("ProductionYear")}
+            found.append(shows[series_id])
+        elif item.get("Type") == "Movie" and item.get("Id") and len(found) < limit:
+            found.append({"id": item["Id"].replace("-", ""), "title": item.get("Name") or "Unknown movie",
+                          "kind": "movie", "detail": None, "count": 1, "added": added,
+                          "year": item.get("ProductionYear")})
+    for show in shows.values():
+        if show["count"] > 1:
+            show["detail"] = f"{show['count']} new episodes"
+    return found
+
+
 class Jellyfin:
     def __init__(self, url: str, api_key: str, timeout: float = 8.0,
                  transport: httpx.AsyncBaseTransport | None = None) -> None:
@@ -166,6 +205,39 @@ class Jellyfin:
         """Sign-in events newer than ``last_id``, oldest first."""
         entries = await self.entries_since(last_id, page, max_pages)
         return [e for e in (parse_activity(i) for i in entries) if e]
+
+    async def libraries(self) -> list[dict]:
+        """Each library with its item counts (movies, or shows and episodes, and so on)."""
+        found = []
+        for folder in await self._get("/Library/VirtualFolders"):
+            kind = folder.get("CollectionType") or "mixed"
+            library = {"id": (folder.get("ItemId") or "").replace("-", ""), "name": folder.get("Name") or "Library",
+                       "kind": kind}
+            for label, item_type in LIBRARY_COUNTS.get(kind, [("items", "")]):
+                # Missing episodes Jellyfin knows of but has no file for are left out.
+                params = {"parentId": folder.get("ItemId"), "recursive": "true", "limit": 0, "isMissing": "false",
+                          "enableTotalRecordCount": "true", "enableImages": "false", "enableUserData": "false"}
+                if item_type:
+                    params["includeItemTypes"] = item_type
+                else:
+                    params["isFolder"] = "false"
+                library[label] = (await self._get("/Items", **params)).get("TotalRecordCount")
+            found.append(library)
+        return found
+
+    async def latest(self, limit: int = 12) -> list[dict]:
+        data = await self._get("/Items", recursive="true", includeItemTypes="Movie,Episode", sortBy="DateCreated",
+                               sortOrder="Descending", limit=100, fields="DateCreated", isMissing="false",
+                               enableImages="false", enableUserData="false")
+        return summarize_latest(data.get("Items") or [], limit)
+
+    async def poster(self, item_id: str) -> tuple[bytes, str] | None:
+        response = await self._client.get(f"/Items/{item_id}/Images/Primary",
+                                          params={"fillHeight": 300, "quality": 85})
+        kind = response.headers.get("content-type", "").split(";")[0].strip().lower()
+        if response.status_code != 200 or kind not in POSTER_TYPES:
+            return None
+        return response.content, kind
 
     async def items(self, ids: list[str]) -> list[dict]:
         """Library details for item ids (deleted items are simply missing)."""

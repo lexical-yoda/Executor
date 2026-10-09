@@ -2234,6 +2234,297 @@ a.tile:hover {
   margin-top: 4px;
 }
 
+/* --- Storage (TrueNAS) --- */
+.pool-fill.tone-up {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--data) 55%, transparent), var(--data));
+}
+.pool-fill.tone-degraded {
+  background: var(--degraded);
+}
+.pool-fill.tone-down {
+  background: var(--down);
+}
+
+.temp-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.temp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  background: rgba(148, 163, 184, 0.08);
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.temp-chip.tone-up {
+  color: var(--muted);
+}
+
+.temp-chip.tone-up .num {
+  color: var(--text);
+}
+
+.temp-chip.tone-degraded {
+  border-color: color-mix(in srgb, var(--degraded) 45%, transparent);
+}
+
+.temp-chip.tone-down {
+  border-color: color-mix(in srgb, var(--down) 45%, transparent);
+}
+
+.storage-system {
+  width: auto;
+}
+
+.nas-alerts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.nas-alerts li {
+  display: flex;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.nas-alert-icon {
+  color: var(--bk, var(--muted));
+  padding-top: 2px;
+}
+
+.nas-alert-text {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.disk-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.disk-list .row-btn {
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr) auto;
+}
+
+.disk-model {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.temp-range {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.14);
+  margin: 6px 0 10px;
+}
+
+.temp-range-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--data) 60%, transparent);
+}
+
+.temp-range-fill.tone-degraded {
+  background: var(--degraded);
+}
+
+.temp-range-fill.tone-down {
+  background: var(--down);
+}
+
+.temp-range-avg,
+.temp-range-now {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 14px;
+  margin-left: -1px;
+  background: var(--muted);
+}
+
+.temp-range-now {
+  background: var(--text);
+}
+
+/* --- DNS (Pi-hole) --- */
+.dns-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: end;
+}
+
+.dns-main {
+  display: grid;
+  gap: 10px;
+}
+
+.dns-top {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 2px;
+  font-size: 13px;
+}
+
+.dns-top li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dns-top .mono {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.query-bars svg {
+  display: block;
+  width: 100%;
+  height: 72px;
+}
+
+.qb-allowed {
+  fill: color-mix(in srgb, var(--data) 45%, transparent);
+}
+
+.qb-blocked {
+  fill: var(--accent);
+}
+
+.query-bars .daily-legend {
+  justify-content: space-between;
+}
+
+.qb-allowed-key,
+.qb-blocked-key {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  margin: 0 4px 0 8px;
+}
+
+.qb-allowed-key {
+  background: color-mix(in srgb, var(--data) 45%, transparent);
+}
+
+.qb-blocked-key {
+  background: var(--accent);
+}
+
+@media (max-width: 760px) {
+  .dns-body {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* --- Media library --- */
+.library-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  /* Let the poster strip scroll instead of widening the grid column. */
+  min-width: 0;
+}
+
+.row-btn.library-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 6px 4px;
+}
+
+.library-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.library-rows li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 10px;
+  align-items: baseline;
+  font-size: 13.5px;
+}
+
+.library-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.library-rows .small.muted {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.library-size {
+  grid-column: 2;
+  grid-row: 1;
+  text-align: right;
+}
+
+.library-bar {
+  grid-column: 1 / -1;
+  height: 5px;
+}
+
+.library-fill {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 50%, transparent), var(--accent));
+}
+
+.library-latest {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.library-latest li {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.library-latest-text {
+  display: grid;
+  gap: 1px;
+  font-size: 13.5px;
+  min-width: 0;
+}
+
+.tile-library {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid var(--border);
+}
+
 /* --- Photo library --- */
 .photo-card {
   margin-bottom: 4px;

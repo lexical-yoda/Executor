@@ -90,6 +90,23 @@ def main() -> None:
             immich = Immich(settings_immich.url, os.environ["IMMICH_API_KEY"], timeout=settings_immich.timeout)
         elif settings_immich:
             logging.getLogger("executor").warning("Immich configured but IMMICH_API_KEY not set")
+        truenas = None
+        settings_truenas = config.integrations.truenas
+        if settings_truenas and os.environ.get("TRUENAS_API_KEY"):
+            from .sources.truenas import TrueNAS
+
+            truenas = TrueNAS(settings_truenas.url, os.environ["TRUENAS_API_KEY"], settings_truenas.username,
+                              settings_truenas.verify_tls, settings_truenas.timeout)
+        elif settings_truenas:
+            logging.getLogger("executor").warning("TrueNAS configured but TRUENAS_API_KEY not set")
+        pihole = None
+        settings_pihole = config.integrations.pihole
+        if settings_pihole and os.environ.get("PIHOLE_PASSWORD"):
+            from .sources.pihole import PiHole
+
+            pihole = PiHole(settings_pihole.url, os.environ["PIHOLE_PASSWORD"], settings_pihole.timeout)
+        elif settings_pihole:
+            logging.getLogger("executor").warning("Pi-hole configured but PIHOLE_PASSWORD not set")
         cloudwatch = None
         if backups and backups.storage:
             if os.environ.get("AWS_ACCESS_KEY_ID") and os.environ.get("AWS_SECRET_ACCESS_KEY"):
@@ -139,7 +156,8 @@ def main() -> None:
         tiles = Path(os.environ.get("EXECUTOR_TILES", "/tiles"))
         app = create_web_app(config, runner, static, beszel=beszel, jellyfin=jellyfin, duplicati=duplicati,
                              media=media, cloudwatch=cloudwatch, history=history, store=ledger,
-                             tiles_dir=tiles if tiles.is_dir() else None, immich=immich)
+                             tiles_dir=tiles if tiles.is_dir() else None, immich=immich, truenas=truenas,
+                             pihole=pihole)
         uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "1977")), **common)
 
     elif role == "runner":

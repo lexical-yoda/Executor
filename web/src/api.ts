@@ -139,6 +139,123 @@ export interface Snapshot {
   jellyfin: JellyfinStatus | null
   /** The Immich photo library, when configured. */
   photos?: Photos | null
+  /** The Jellyfin media library, when Jellyfin is configured. */
+  library?: Library | null
+  /** Storage health from TrueNAS, when configured. */
+  truenas?: TrueNASHealth | null
+  /** DNS from Pi-hole, when configured. */
+  pihole?: PiHoleStatus | null
+}
+
+export interface PiHoleStatus {
+  configured: boolean
+  ok: boolean
+  error: string | null
+  checked_at: number | null
+  queries?: number
+  blocked?: number
+  pct_blocked?: number
+  cached?: number
+  forwarded?: number
+  unique_domains?: number | null
+  clients_active?: number | null
+  blocklist_domains?: number | null
+  blocklist_updated?: number | null
+  blocking?: string | null
+  blocking_timer?: number | null
+  history?: { t: number; total: number; blocked: number }[]
+  top_blocked?: { domain: string; count: number }[]
+  top_clients?: { name: string; ip: string; count: number }[]
+  version?: string | null
+}
+
+export interface Pool {
+  name: string
+  status: string
+  healthy: boolean
+  warning: boolean
+  detail: string | null
+  size: number | null
+  allocated: number | null
+  free: number | null
+  pct: number | null
+  fragmentation: number | null
+  scan: {
+    function: string | null
+    state: string | null
+    started: number | null
+    finished: number | null
+    errors: number | null
+    pct: number | null
+  } | null
+  vdevs: { role: string; type: string | null; status: string | null; disks: string[]; errors: number }[]
+}
+
+export interface Disk {
+  name: string
+  model: string | null
+  type: string | null
+  size: number | null
+  rpm: number | null
+  pool: string | null
+  temp: number | null
+  temp_max_7d: number | null
+  temp_avg_7d: number | null
+}
+
+export interface NasAlert {
+  id: string
+  level: string
+  klass: string | null
+  text: string
+  since: number | null
+}
+
+export interface TrueNASHealth {
+  configured: boolean
+  ok: boolean
+  error: string | null
+  checked_at: number | null
+  system: { version: string | null; uptime_s: number | null; update: boolean } | null
+  pools: Pool[]
+  disks: Disk[] | null
+  alerts: NasAlert[] | null
+  datasets: { name: string; pool: string; used: number | null; available: number | null }[] | null
+}
+
+export interface LibraryItem {
+  id: string
+  title: string
+  kind: 'movie' | 'series'
+  detail: string | null
+  count: number
+  added: string | null
+  year: number | null
+}
+
+export interface MediaLibrary {
+  id: string
+  name: string
+  kind: string
+  movies?: number | null
+  series?: number | null
+  episodes?: number | null
+  collections?: number | null
+  albums?: number | null
+  songs?: number | null
+  items?: number | null
+  bytes: number | null
+  files: number | null
+}
+
+export interface Library {
+  ok: boolean
+  error: string | null
+  checked_at: number | null
+  libraries: MediaLibrary[]
+  totals: { movies?: number; series?: number; episodes?: number; collections?: number; bytes?: number | null }
+  latest: LibraryItem[]
+  growth: { tracked_since: string; d7: number | null; d30: number | null } | null
 }
 
 export interface DayCount {
@@ -657,6 +774,10 @@ export const api = {
   recap: (days = 7) => request<Recap>(`/api/recap?days=${days}`),
   tilesets: () => request<{ tilesets: Tileset[] }>('/api/map/tilesets'),
   photoHistory: () => request<PhotoHistory>('/api/photos/history'),
+  libraryHistory: () =>
+    request<{ days: { date: string; bytes: number | null; movies: number | null; series: number | null; episodes: number | null }[] }>(
+      '/api/media/library/history',
+    ),
   run: (id: string, offset: number) => request<RunDetail>(`/api/runs/${id}?offset=${offset}`),
   settingsServices: () =>
     request<{ services: SettingsService[]; groups: string[]; default_group: string | null }>('/api/settings/services'),

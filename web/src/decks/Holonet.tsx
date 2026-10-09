@@ -4,6 +4,7 @@ import { api, type MediaUser } from '../api'
 import { ago } from '../format'
 import { type MapMode, placeKey, trailHops } from '../map/types'
 import { useApp } from '../state'
+import { LibraryCard } from '../components/Library'
 import { DownloadsCard, NowPlayingCard, placeName, RequestsCard } from '../components/Media'
 import { Empty, RowButton } from '../components/ui'
 import { nodeStatuses } from './Bridge'
@@ -301,6 +302,7 @@ export function Holonet({ tour }: { tour: boolean }) {
         {j && <NowPlayingCard data={j} />}
         {media?.requests.configured && <RequestsCard data={media.requests} />}
         {media && <DownloadsCard data={media.downloads} />}
+        {s.library && <LibraryCard library={s.library} />}
         {history && (
           <article className="edge-card card media-card">
             <div className="edge-head">

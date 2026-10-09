@@ -25,7 +25,7 @@ import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request
 from pydantic import BaseModel
 
-from .config import ENV_REF, Action, ActionsConfig, Step, WatchedFolder
+from .config import ENV_REF, Action, ActionsConfig, SizedFolder, Step, WatchedFolder
 from .docker_api import DockerAPI
 
 log = logging.getLogger("executor.runner")
@@ -125,6 +125,33 @@ def describe_folder(folder: WatchedFolder) -> dict:
             continue
         tails[name] = [line for line in text.splitlines() if line.strip()][-TAIL_LINES:]
     return {"id": folder.id, "ok": True, "error": None, "entries": entries[:MAX_ENTRIES], "tails": tails}
+
+
+def measure_folder(folder: SizedFolder) -> dict:
+    """Total size and number of files under a folder. Never follows symlinks
+    and reports nothing but the two numbers."""
+    total = files = 0
+    pending = [folder.path]
+    try:
+        os.scandir(folder.path).close()
+    except OSError as exc:
+        return {"id": folder.id, "ok": False, "error": exc.strerror or exc.__class__.__name__,
+                "bytes": None, "files": None}
+    while pending:
+        try:
+            with os.scandir(pending.pop()) as listing:
+                for entry in listing:
+                    try:
+                        if entry.is_dir(follow_symlinks=False):
+                            pending.append(entry.path)
+                        elif entry.is_file(follow_symlinks=False):
+                            total += entry.stat(follow_symlinks=False).st_size
+                            files += 1
+                    except OSError:
+                        continue
+        except OSError:
+            continue
+    return {"id": folder.id, "ok": True, "error": None, "bytes": total, "files": files}
 
 
 COMPOSE_FILES = ("compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml")
@@ -438,6 +465,20 @@ def create_runner_app(actions: ActionsConfig, token: str, docker: DockerAPI, dat
     @app.get("/files", dependencies=guarded)
     async def files() -> list[dict]:
         return await asyncio.gather(*(asyncio.to_thread(describe_folder, f) for f in actions.files))
+
+    measured: dict[str, tuple[float, dict]] = {}
+
+    @app.get("/sizes", dependencies=guarded)
+    async def sizes() -> list[dict]:
+        """Sizes of the folders under `sizes:`, measured at most every ten minutes."""
+        async def one(folder: SizedFolder) -> dict:
+            cached = measured.get(folder.id)
+            if cached and time.monotonic() - cached[0] < 600:
+                return cached[1]
+            result = await asyncio.to_thread(measure_folder, folder)
+            measured[folder.id] = (time.monotonic(), result)
+            return result
+        return list(await asyncio.gather(*(one(f) for f in actions.sizes)))
 
     @app.get("/stacks", dependencies=guarded)
     async def stacks() -> dict:
