@@ -85,10 +85,9 @@ a {
   inset: 0;
   z-index: -2;
   background:
-    radial-gradient(1200px 600px at 15% -10%, rgba(245, 165, 36, 0.10), transparent 60%),
+    radial-gradient(1200px 600px at 15% -10%, rgba(245, 165, 36, 0.1), transparent 60%),
     radial-gradient(900px 500px at 90% 0%, rgba(56, 189, 248, 0.08), transparent 60%),
-    radial-gradient(800px 800px at 50% 120%, rgba(99, 102, 241, 0.07), transparent 60%),
-    var(--bg);
+    radial-gradient(800px 800px at 50% 120%, rgba(99, 102, 241, 0.07), transparent 60%), var(--bg);
 }
 
 .starfield {
@@ -1759,7 +1758,7 @@ a.tile:hover .tile-link {
   user-select: none;
 }
 
-/* --- Audience: globe, flat map, picker, timeline --- */
+/* --- Audience: map, picker, timeline --- */
 .audience-controls {
   display: flex;
   align-items: center;
@@ -1783,46 +1782,8 @@ a.tile:hover .tile-link {
   flex-direction: column;
 }
 
-.globe-holder {
-  height: 520px;
-  cursor: grab;
-}
-
-.globe-holder:active {
-  cursor: grabbing;
-}
-
-/* globe.gl injects these with a <style> tag, which the page's CSP blocks. */
-.scene-container .clickable {
-  cursor: pointer;
-}
-
-.float-tooltip-kap {
-  position: absolute;
-  width: max-content;
-  max-width: max(50%, 220px);
-  pointer-events: none;
-  z-index: 5;
-}
-
-.geo-tip {
-  display: grid;
-  gap: 2px;
-  padding: 7px 9px;
-  border-radius: 8px;
-  background: rgba(8, 13, 26, 0.92);
-  border: 1px solid var(--border-strong);
-  color: var(--text);
-  font: 12px var(--sans);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
-}
-
-.geo-tip span {
-  color: var(--muted);
-}
-
 .map-loading {
-  height: 520px;
+  aspect-ratio: 960 / 500;
   display: grid;
   place-items: center;
   color: var(--dim);
@@ -1858,6 +1819,9 @@ a.tile:hover .tile-link {
   background: #34d399;
   box-shadow: 0 0 6px #34d399;
 }
+.lg-origin {
+  background: #a78bfa;
+}
 .lg-hub {
   background: #38bdf8;
   border-radius: 1px !important;
@@ -1875,6 +1839,7 @@ a.tile:hover .tile-link {
   width: 100%;
   height: auto;
   margin-bottom: 34px;
+  background: radial-gradient(ellipse at 50% 40%, rgba(56, 189, 248, 0.06), transparent 70%);
 }
 
 .map-grid {
@@ -1884,17 +1849,85 @@ a.tile:hover .tile-link {
 }
 
 .map-land {
-  fill: rgba(148, 163, 184, 0.16);
-  stroke: rgba(148, 163, 184, 0.28);
-  stroke-width: 0.5;
+  fill: rgba(148, 163, 184, 0.14);
+  stroke: rgba(148, 163, 184, 0.3);
 }
 
 .map-trail {
   fill: none;
   stroke: #fbbf24;
-  stroke-width: 1.6;
-  stroke-dasharray: 5 4;
   animation: dash 1.2s linear infinite;
+}
+
+.flow-line {
+  fill: none;
+  stroke-linecap: round;
+  opacity: 0.45;
+}
+
+.flow-line-live {
+  opacity: 0.85;
+}
+
+.flow-line-selected {
+  opacity: 1;
+  filter: drop-shadow(0 0 5px rgba(52, 211, 153, 0.7));
+}
+
+.flow-dimmed {
+  opacity: 0.3;
+}
+
+.flow-hit,
+.flow-hit-dot {
+  fill: none;
+  stroke: transparent;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+.flow-hit-dot {
+  fill: transparent;
+  pointer-events: all;
+}
+
+.map-node {
+  cursor: pointer;
+}
+
+.flow-dot-backbone {
+  fill: #c4b5fd;
+  filter: drop-shadow(0 0 4px #a78bfa);
+}
+
+.flow-dot-out {
+  fill: #6ee7b7;
+  filter: drop-shadow(0 0 4px #34d399);
+}
+
+.map-label {
+  fill: var(--text);
+  font-family: var(--sans);
+  font-weight: 600;
+  paint-order: stroke;
+  stroke: rgba(4, 6, 12, 0.85);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.map-label-place {
+  fill: rgba(253, 230, 138, 0.85);
+  font-weight: 500;
+  pointer-events: none;
+}
+
+.map-label-live {
+  fill: #a7f3d0;
+}
+
+.map-label-dim {
+  fill: var(--muted);
+  font-weight: 500;
 }
 
 @keyframes dash {
@@ -1904,15 +1937,26 @@ a.tile:hover .tile-link {
 }
 
 .map-place {
+  fill: rgba(245, 165, 36, 0.5);
   stroke: rgba(4, 6, 12, 0.7);
-  stroke-width: 1;
   cursor: pointer;
+}
+
+.map-place-recent {
+  fill: #f5a524;
+}
+
+.map-place-faint {
+  fill: rgba(245, 165, 36, 0.28);
+}
+
+.map-place-faint.map-place-recent {
+  fill: rgba(245, 165, 36, 0.6);
 }
 
 .map-live-pulse {
   fill: none;
   stroke: #34d399;
-  stroke-width: 2;
   transform-box: fill-box;
   transform-origin: center;
   animation: live-pulse 1.6s ease-out infinite;
@@ -1967,6 +2011,37 @@ a.tile:hover .tile-link {
   gap: 6px;
   margin: 4px 0;
   font-size: 15px;
+}
+
+.stream-details {
+  display: grid;
+  gap: 8px;
+}
+
+.stream-details p {
+  margin: 0;
+}
+
+.stream-details-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 5px 12px;
+  margin: 4px 0;
+  font-size: 13px;
+}
+
+.facts dt {
+  color: var(--muted);
+}
+
+.facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .timeline {
@@ -2306,7 +2381,8 @@ a.tile:hover .tile-link {
 }
 
 .queue-active {
-  background-image: linear-gradient(
+  background-image:
+    linear-gradient(
       135deg,
       rgba(255, 255, 255, 0.18) 25%,
       transparent 25%,
@@ -2507,10 +2583,6 @@ a.tile:hover .tile-link {
   .media-grid,
   .audience-grid {
     grid-template-columns: 1fr;
-  }
-  .globe-holder,
-  .map-loading {
-    height: 420px;
   }
   .header {
     grid-template-columns: 1fr auto;

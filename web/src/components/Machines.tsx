@@ -104,7 +104,17 @@ function Storage({ stats }: { stats: MachineStats }) {
   )
 }
 
-function RichCard({ machine, now, index, onOpen }: { machine: MachineStatus; now: number; index: number; onOpen: () => void }) {
+function RichCard({
+  machine,
+  now,
+  index,
+  onOpen,
+}: {
+  machine: MachineStatus
+  now: number
+  index: number
+  onOpen: () => void
+}) {
   const Icon = ICONS[machine.icon] ?? Server
   const s = machine.stats
   const gpu = s?.gpus[0]
@@ -154,7 +164,11 @@ function RichCard({ machine, now, index, onOpen }: { machine: MachineStatus; now
               <Gauge
                 label="GPU"
                 value={gpu.util_pct}
-                detail={gpu.mem_total_mb ? `${Math.round(gpu.mem_used_mb ?? 0)} / ${Math.round(gpu.mem_total_mb)} MB` : undefined}
+                detail={
+                  gpu.mem_total_mb
+                    ? `${Math.round(gpu.mem_used_mb ?? 0)} / ${Math.round(gpu.mem_total_mb)} MB`
+                    : undefined
+                }
               />
             )}
           </div>

@@ -1,14 +1,6 @@
 import { AlertTriangle, Check, CircleDashed, Loader2, Minus, Pause, Play, TerminalSquare, Tv, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import {
-  api,
-  ApiError,
-  type ActionInfo,
-  type RunDetail,
-  type RunSummary,
-  type StepStatus,
-  type Streams,
-} from '../api'
+import { api, ApiError, type ActionInfo, type RunDetail, type RunSummary, type StepStatus, type Streams } from '../api'
 import { ago } from '../format'
 import { Modal } from './Modal'
 
@@ -322,12 +314,7 @@ export function Actions({ runnerOk, now }: { runnerOk: boolean; now: number }) {
         />
       )}
       {openRun && (
-        <RunConsole
-          key={openRun}
-          runId={openRun}
-          onClose={() => setOpenRun(null)}
-          onFinished={() => void loadRuns()}
-        />
+        <RunConsole key={openRun} runId={openRun} onClose={() => setOpenRun(null)} onFinished={() => void loadRuns()} />
       )}
     </section>
   )

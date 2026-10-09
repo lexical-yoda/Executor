@@ -16,7 +16,7 @@ from executor.web import create_web_app
 
 ALICE = "a" * 32
 BOB = "b" * 32
-PLACES = {"203.0.113.10": {"city": "Kochi", "region": "Kerala", "country": "India", "country_code": "IN",
+PLACES = {"203.0.113.10": {"city": "Porto", "region": "Kerala", "country": "India", "country_code": "IN",
                            "lat": 9.93, "lon": 76.26},
           "198.51.100.7": {"city": "Dubai", "region": "Dubai", "country": "United Arab Emirates",
                            "country_code": "AE", "lat": 25.2, "lon": 55.27}}
@@ -41,10 +41,10 @@ def test_public_ip_and_describe():
     assert public_ip("203.0.113.10") is None  # documentation range is reserved
     assert public_ip("8.8.8.8") == "8.8.8.8"
     assert public_ip("192.168.0.4") is None and public_ip("10.0.0.1") is None and public_ip("nope") is None
-    record = {"city": {"names": {"en": "Kochi"}}, "subdivisions": [{"names": {"en": "Kerala"}}],
+    record = {"city": {"names": {"en": "Porto"}}, "subdivisions": [{"names": {"en": "Kerala"}}],
               "country": {"iso_code": "IN", "names": {"en": "India"}},
               "location": {"latitude": 9.931233, "longitude": 76.267304}}
-    assert describe(record) == {"city": "Kochi", "region": "Kerala", "country": "India", "country_code": "IN",
+    assert describe(record) == {"city": "Porto", "region": "Kerala", "country": "India", "country_code": "IN",
                                 "lat": 9.9312, "lon": 76.2673}
     assert describe({"country": {"iso_code": "IN"}}) is None
 
@@ -78,16 +78,16 @@ def test_store_merges_sightings_and_purges(tmp_path):
     assert len(trail) == 3
     assert trail[0]["item"] == "Film" and trail[0]["last_seen"] == now - 1800
     places = store.places(now - 90 * 86400)
-    assert {p["city"] for p in places["places"]} == {"Kochi", "Dubai"}
+    assert {p["city"] for p in places["places"]} == {"Porto", "Dubai"}
     assert places["unlocated"] == 1
-    kochi = next(p for p in places["places"] if p["city"] == "Kochi")
-    assert kochi["count"] == 3 and kochi["users"][0]["name"] == "alice"
+    porto = next(p for p in places["places"] if p["city"] == "Porto")
+    assert porto["count"] == 3 and porto["users"][0]["name"] == "alice"
     assert [u["name"] for u in store.users(now - 90 * 86400)] == ["alice", "bob"]
     assert store.places(now - 90 * 86400, BOB)["places"][0]["city"] == "Dubai"
     store.set_location("192.0.2.1", PLACES["203.0.113.10"])
     assert store.unlocated_ips() == []
     assert store.purge(30, now) == 1
-    assert [p["city"] for p in store.places(now - 90 * 86400, BOB)["places"]] == ["Kochi"]
+    assert [p["city"] for p in store.places(now - 90 * 86400, BOB)["places"]] == ["Porto"]
 
 
 def test_activity_parsing():
@@ -147,7 +147,7 @@ def test_sampling_and_log_import(tmp_path, monkeypatch):
 
     watching = asyncio.run(history.sample(now))
     assert len(watching) == 1
-    assert watching[0]["location"]["city"] == "Kochi" and watching[0]["progress"] == 0.5
+    assert watching[0]["location"]["city"] == "Porto" and watching[0]["progress"] == 0.5
     assert watching[0]["transcoding"] is True
     asyncio.run(history.maintain(now))
     assert geo.ensured == 1
@@ -162,7 +162,8 @@ def test_sampling_and_log_import(tmp_path, monkeypatch):
 
 CONFIG = Config.model_validate({
     "security": {"allowed_clients": ["10.8.0.0/24"], "allowed_hosts": ["10.8.0.10"]},
-    "integrations": {"jellyfin": {"url": "http://media.example", "hub": {"label": "Hub", "lat": 12.9, "lon": 77.6}}},
+    "integrations": {"jellyfin": {"url": "http://media.example", "hub": {"label": "Hub", "lat": 12.9, "lon": 77.6},
+                                 "origin": {"label": "Home", "lat": 9.9, "lon": 76.3}}},
     "machines": [], "services": [],
 })
 
@@ -178,12 +179,13 @@ def test_history_endpoints(tmp_path):
     c = TestClient(app, base_url="http://10.8.0.10:1977", client=("10.8.0.2", 5000))
     assert c.get("/api/media/users").json()["users"][0]["name"] == "alice"
     places = c.get(f"/api/media/places?user={ALICE}&days=30").json()
-    assert places["places"][0]["city"] == "Kochi"
+    assert places["places"][0]["city"] == "Porto"
     trail = c.get(f"/api/media/trail?user={ALICE}").json()
     assert trail["sightings"][0]["ip"] == "203.0.113.10"
     assert c.get("/api/media/trail?user=../../etc").status_code == 400
     snapshot = c.get("/api/status").json()["jellyfin"]
-    assert snapshot["hub"]["label"] == "Hub" and snapshot["history"]["enabled"] is True
+    assert snapshot["hub"]["label"] == "Hub" and snapshot["origin"]["label"] == "Home"
+    assert snapshot["history"]["enabled"] is True
 
     plain = create_web_app(CONFIG, runner=None, static_dir=None, start_monitor=False)
     c = TestClient(plain, base_url="http://10.8.0.10:1977", client=("10.8.0.2", 5000))

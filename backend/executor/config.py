@@ -112,7 +112,7 @@ class EdgeIntegration(BaseModel):
     interval: float = 300
 
 
-class GlobePoint(BaseModel):
+class MapPoint(BaseModel):
     label: str
     lat: float = Field(ge=-90, le=90)
     lon: float = Field(ge=-180, le=180)
@@ -126,8 +126,10 @@ class JellyfinIntegration(BaseModel):
     # Days of location history to keep in the web data folder. 0 turns
     # history (and the geolocation download) off.
     history_days: int = Field(default=90, ge=0, le=400)
-    # Where streams are served from, drawn as the end of each arc on the map.
-    hub: GlobePoint | None = None
+    # On the map, streams flow from `origin` (where the media server is) to
+    # `hub` (the public relay or reverse proxy, if any) and out to viewers.
+    origin: MapPoint | None = None
+    hub: MapPoint | None = None
 
 
 class DuplicatiIntegration(BaseModel):

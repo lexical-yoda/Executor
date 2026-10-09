@@ -53,7 +53,9 @@ integrations:
     # EXECUTOR_WEB_DATA (0 turns it off). Locations are looked up locally in
     # the free DB-IP Lite database; addresses are never sent anywhere.
     history_days: 90
-    # Where streams are served from: the end point of the map's arcs.
+    # On the map, streams flow from origin (the media server) to hub (a
+    # public relay or reverse proxy) and out to viewers. Both optional.
+    origin: {label: Home, lat: 52.37, lon: 4.9}
     hub: {label: Edge server, lat: 50.11, lon: 8.68}
   # Optional. Media panels: Jellyseerr requests, Sonarr and Radarr queues, and
   # qBittorrent speeds. Keys and the qBittorrent login come from .env.

@@ -107,14 +107,20 @@ folder, Executor also keeps a location history:
 - `GET /api/media/users`, `/api/media/places` and `/api/media/trail` serve
   the history to the page.
 
-**Audience map.** Desktop shows a 3D globe (globe.gl and three.js, loaded
-only when shown, so the rest of the page stays light); phones get a flat SVG
-map (d3-geo). Both draw countries from the bundled Natural Earth data, so no
-map tiles or textures are fetched. Places are sized by how often users
-connected from them, live streams pulse and arc to the configured `hub`, and
-picking a user draws their path and lists a timeline of where and on which
-device they connected. Ranges: 7, 30 or 90 days. Desktop can switch between
-the globe and the flat map.
+**Audience map.** A flat SVG map (d3-geo) drawn from bundled Natural Earth
+country shapes, so no map tiles are fetched; the more detailed 1:50m shapes
+load only when the map zooms into a region. Two views:
+
+- **Live** fits the stream route and whoever is watching. Dots flow from
+  `origin` (where the media server is) to `hub` (the relay, if any) and on to
+  each viewer, with the busiest places named beside their dots.
+- **All places** shows every place in the chosen range (7, 30 or 90 days),
+  sized by how often users connected from there.
+
+Click a viewer's line or dot to see who is watching what, from where, on
+which app, and whether the server is transcoding; click the origin-to-hub
+line for every stream on it; click a place for everyone seen there. Picking a
+user draws their path and lists where and on which device they connected.
 
 **Presentation mode** (the eye button in the header) blurs every username,
 and device names (which often contain a person's name), for showing the

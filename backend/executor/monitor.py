@@ -320,7 +320,9 @@ class Monitor:
     def _jellyfin(self) -> dict | None:
         if not self.history:
             return None
-        hub = self.config.integrations.jellyfin.hub if self.config.integrations.jellyfin else None
+        settings = self.config.integrations.jellyfin
+        hub = settings.hub if settings else None
+        origin = settings.origin if settings else None
         return {
             "ok": self.watching_error is None,
             "error": self.watching_error,
@@ -328,6 +330,7 @@ class Monitor:
             "watching": self.watching,
             "history": self.history.status(),
             "hub": hub.model_dump() if hub else None,
+            "origin": origin.model_dump() if origin else None,
         }
 
     async def poll_storage(self) -> None:

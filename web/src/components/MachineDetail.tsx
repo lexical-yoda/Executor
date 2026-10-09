@@ -37,14 +37,20 @@ function Chart({
   useEffect(() => {
     const el = box.current
     if (!el || !present.length || t.length < 2) return
-    const axis = { stroke: '#8a97ab', grid: { stroke: 'rgba(148,163,184,0.10)' }, ticks: { stroke: 'rgba(148,163,184,0.15)' } }
+    const axis = {
+      stroke: '#8a97ab',
+      grid: { stroke: 'rgba(148,163,184,0.10)' },
+      ticks: { stroke: 'rgba(148,163,184,0.15)' },
+    }
     const plot = new uPlot(
       {
         width: el.clientWidth,
         height: 170,
         legend: { show: true, live: true },
         cursor: { points: { size: 6 } },
-        scales: { y: max !== undefined ? { range: [0, max] } : { auto: true, range: (_u, _min, hi) => [0, hi * 1.1 || 1] } },
+        scales: {
+          y: max !== undefined ? { range: [0, max] } : { auto: true, range: (_u, _min, hi) => [0, hi * 1.1 || 1] },
+        },
         axes: [axis, { ...axis, size: 72, values: (_u, ticks) => ticks.map(format) }],
         series: [
           {},

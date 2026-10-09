@@ -37,7 +37,9 @@ function Tile({ service, index }: { service: ServiceStatus; index: number }) {
         <div className="tile-title">
           <h3>{service.name}</h3>
           <span className="small muted">
-            {service.status === 'down' && service.error ? service.error : service.description ?? latency(service.latency_ms)}
+            {service.status === 'down' && service.error
+              ? service.error
+              : (service.description ?? latency(service.latency_ms))}
           </span>
         </div>
         <StatusDot status={service.status} />

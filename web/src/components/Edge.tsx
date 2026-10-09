@@ -35,11 +35,25 @@ function DailyBars({ daily, monthStart }: { daily: Bandwidth['daily']; monthStar
               {i + 1 === today && <rect className="day-today" x={i * w} width={w} y={0} height={40} />}
               {d && (
                 <>
-                  <rect className="bar-in" x={i * w + w * 0.12} width={w * 0.36} y={40 - (d.in_gb / max) * 38} height={(d.in_gb / max) * 38} />
-                  <rect className="bar-out" x={i * w + w * 0.52} width={w * 0.36} y={40 - (d.out_gb / max) * 38} height={(d.out_gb / max) * 38} />
+                  <rect
+                    className="bar-in"
+                    x={i * w + w * 0.12}
+                    width={w * 0.36}
+                    y={40 - (d.in_gb / max) * 38}
+                    height={(d.in_gb / max) * 38}
+                  />
+                  <rect
+                    className="bar-out"
+                    x={i * w + w * 0.52}
+                    width={w * 0.36}
+                    y={40 - (d.out_gb / max) * 38}
+                    height={(d.out_gb / max) * 38}
+                  />
                 </>
               )}
-              {!d && i + 1 < today && <rect className="day-empty" x={i * w + w * 0.3} width={w * 0.4} y={38.5} height={1.5} />}
+              {!d && i + 1 < today && (
+                <rect className="day-empty" x={i * w + w * 0.3} width={w * 0.4} y={38.5} height={1.5} />
+              )}
             </g>
           )
         })}
@@ -100,13 +114,18 @@ function BandwidthCard({ bw, error, now }: { bw: Bandwidth | null; error: string
           <div className="bw-projected" style={{ left: `${Math.min(100, projected)}%` }} title="Projected month end" />
         )}
         {allocatedPct !== null && (
-          <div className="bw-allocated" style={{ left: `${Math.min(100, allocatedPct)}%` }} title="Allowance accrued so far" />
+          <div
+            className="bw-allocated"
+            style={{ left: `${Math.min(100, allocatedPct)}%` }}
+            title="Allowance accrued so far"
+          />
         )}
       </div>
       <div className="bw-scale small muted num">
         <span>{used !== null ? `${used.toFixed(1)}% used` : ''}</span>
         <span>
-          {bw.elapsed_pct !== null ? `${Math.round(bw.elapsed_pct)}% of month gone` : ''} · allowance {gb(bw.allowance_month_gb)}
+          {bw.elapsed_pct !== null ? `${Math.round(bw.elapsed_pct)}% of month gone` : ''} · allowance{' '}
+          {gb(bw.allowance_month_gb)}
         </span>
       </div>
 
@@ -127,7 +146,12 @@ function BandwidthCard({ bw, error, now }: { bw: Bandwidth | null; error: string
         {fetchedMs && <span className="stat-chip">Vultr data {ago(fetchedMs, now)}</span>}
       </div>
       {Object.keys(bw.errors).length > 0 && (
-        <p className="small warn-text">Partial data: {Object.entries(bw.errors).map(([k, v]) => `${k} ${v}`).join(', ')}</p>
+        <p className="small warn-text">
+          Partial data:{' '}
+          {Object.entries(bw.errors)
+            .map(([k, v]) => `${k} ${v}`)
+            .join(', ')}
+        </p>
       )}
     </article>
   )
