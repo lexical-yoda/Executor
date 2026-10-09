@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from datetime import datetime, timezone
 
 import httpx
@@ -11,6 +12,7 @@ import httpx
 from .checks import Probe, http_probe, local_stats, ping, tcp_probe
 from .config import Config, Machine, Service
 from .sources.beszel import Beszel, summarize, to_series
+from .sources.edge import check_certificate, fetch_bandwidth
 
 log = logging.getLogger("executor.monitor")
 
@@ -73,6 +75,11 @@ class Monitor:
         self.machine_stats: dict[str, dict] = {}
         self.sparklines: dict[str, dict] = {}
         self.beszel_error: str | None = None if beszel else "not configured"
+        self.edge_settings = config.integrations.edge
+        self.bandwidth: dict | None = None
+        self.bandwidth_error: str | None = None
+        self.certificates: list[dict] = []
+        self._certs_checked = 0.0
         self.probes: dict[str, Probe] = {}
         self.pings: dict[str, Probe] = {}
         self.last_seen: dict[str, str] = {}
@@ -90,6 +97,8 @@ class Monitor:
             asyncio.create_task(self._loop(self.check_machines, settings.ping_interval)),
             asyncio.create_task(self._loop(self.poll_containers, settings.container_interval)),
         ]
+        if self.edge_settings:
+            self._tasks.append(asyncio.create_task(self._loop(self.poll_edge, self.edge_settings.interval)))
         if self.beszel:
             self._tasks += [
                 asyncio.create_task(self._loop(self.poll_beszel, settings.stats_interval)),
@@ -151,6 +160,26 @@ class Monitor:
             return
         self.containers = {c["name"]: c for c in items}
         self.runner_error = None
+
+    async def poll_edge(self) -> None:
+        settings = self.edge_settings
+        assert settings is not None
+        if settings.bandwidth_url:
+            try:
+                self.bandwidth = await fetch_bandwidth(settings.bandwidth_url, self._http)
+                self.bandwidth_error = None
+            except Exception as exc:  # noqa: BLE001
+                self.bandwidth_error = str(exc)[:160] or type(exc).__name__
+        # Certificates change rarely; check them hourly.
+        if settings.certificates and time.monotonic() - self._certs_checked > 3600:
+            self.certificates = list(await asyncio.gather(*(check_certificate(h) for h in settings.certificates)))
+            self._certs_checked = time.monotonic()
+
+    def _edge(self) -> dict | None:
+        if not self.edge_settings:
+            return None
+        return {"bandwidth": self.bandwidth, "bandwidth_error": self.bandwidth_error,
+                "certificates": self.certificates}
 
     def _beszel_machines(self) -> list[tuple[Machine, dict]]:
         """Configured machines that exist in Beszel, with their system record."""
@@ -255,4 +284,5 @@ class Monitor:
             "runner": {"ok": self.runner_error is None, "error": self.runner_error},
             "beszel": {"configured": self.beszel is not None, "ok": self.beszel_error is None,
                        "error": self.beszel_error},
+            "edge": self._edge(),
         }

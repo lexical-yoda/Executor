@@ -39,6 +39,12 @@ settings:
 integrations:
   beszel:
     url: http://host.docker.internal:8090
+  # Optional. Edge panel: certificate expiry for these hosts, and VPS bandwidth
+  # from a JSON file produced on the VPS (see README, "Edge panel").
+  edge:
+    bandwidth_url: http://10.8.0.1:8099/bandwidth.json
+    certificates: [media.example.com]
+    interval: 300
 
 # Display order of service groups. Groups not listed here follow in order of use.
 groups:

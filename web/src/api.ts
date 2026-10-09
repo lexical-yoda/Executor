@@ -104,6 +104,42 @@ export interface Snapshot {
   }
   runner: { ok: boolean; error: string | null }
   beszel: { configured: boolean; ok: boolean; error: string | null }
+  edge: Edge | null
+}
+
+export interface Bandwidth {
+  fetched_at: number | null
+  age_s: number | null
+  errors: Record<string, string>
+  instance: { label: string | null; plan: string | null; region: string | null } | null
+  month_start: number | null
+  month_end: number | null
+  elapsed_pct: number | null
+  out_gb: number | null
+  in_gb: number | null
+  allowance_now_gb: number | null
+  allowance_month_gb: number | null
+  projected_out_gb: number | null
+  projected_pct: number | null
+  used_pct: number | null
+  overage_gb: number | null
+  overage_cost: number | null
+  previous: { out_gb: number | null; in_gb: number | null; allowance_gb: number | null } | null
+  daily: { date: string; out_gb: number; in_gb: number }[]
+}
+
+export interface Certificate {
+  host: string
+  expires: string | null
+  days_left: number | null
+  issuer: string | null
+  error: string | null
+}
+
+export interface Edge {
+  bandwidth: Bandwidth | null
+  bandwidth_error: string | null
+  certificates: Certificate[]
 }
 
 export type HistoryRange = '1h' | '12h' | '24h' | '7d' | '30d'

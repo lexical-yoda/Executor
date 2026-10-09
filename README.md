@@ -54,6 +54,25 @@ container a Beszel user with the `readonly` role through `BESZEL_EMAIL` and
 `BESZEL_PASSWORD`. Machines without a `beszel:` name show as compact
 online/offline cards.
 
+### Edge panel (optional)
+
+Shows TLS certificate expiry for the hosts in `integrations.edge.certificates`
+(checked hourly from the web container), and the VPS's outbound bandwidth
+against the provider allowance, with a month-end projection and daily bars.
+
+Bandwidth is read from a JSON file at `integrations.edge.bandwidth_url`. On a
+Vultr VPS, the intended producer is a small timer on the VPS itself that calls
+`GET /v2/account/bandwidth` and `/v2/instances/{id}/bandwidth` with a key that:
+
+- belongs to a Vultr **service user** whose only role holds a custom policy
+  with `account.bandwidth.Read` plus the managed **View Servers** policy, and
+- is allowlisted for the VPS's own IP only,
+
+so the key can only read figures and only works from the VPS. The VPS serves
+the resulting file on a private interface to the Executor host only. Only
+outbound transfer is billed; the allowance shown is the account's pooled
+credits (instance credits accruing hourly plus the free monthly credits).
+
 ### Actions
 
 An action is an ordered list of steps in `actions.yaml`. A step is either `run`
@@ -137,7 +156,7 @@ Tests: `cd backend && ../.venv/bin/python -m pytest -q`. Tests that check a real
 
 1. **Phase 1:** status for every service and machine, and one-click actions.
 2. **Phase 2 (in progress):** machine stats and history from Beszel (done);
-   bandwidth and certificate expiry, media panels, backups panel, and more
-   actions, including a VPS update and reboot.
+   bandwidth and certificate expiry (done); media panels, backups panel, and
+   more actions, including a VPS update and reboot.
 3. **Phase 3:** a media section: now playing, active users, a globe of login
    locations, and per-user location history.

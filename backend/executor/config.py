@@ -101,8 +101,17 @@ class BeszelIntegration(BaseModel):
     timeout: float = 8.0
 
 
+class EdgeIntegration(BaseModel):
+    # JSON written by the VPS's bandwidth fetcher (see README, "Edge panel").
+    bandwidth_url: str | None = None
+    # Hostnames whose TLS certificate expiry is shown.
+    certificates: list[str] = []
+    interval: float = 300
+
+
 class Integrations(BaseModel):
     beszel: BeszelIntegration | None = None
+    edge: EdgeIntegration | None = None
 
 
 class Config(BaseModel):

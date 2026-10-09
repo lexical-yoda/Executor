@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { api } from './api'
 import { Actions } from './components/Actions'
+import { Edge } from './components/Edge'
 import { Header } from './components/Header'
 import { Machines } from './components/Machines'
 import { Services } from './components/Services'
@@ -23,6 +24,7 @@ export default function App() {
         {snapshot ? (
           <>
             <Machines machines={snapshot.machines} now={now} />
+            {snapshot.edge && <Edge edge={snapshot.edge} now={now} />}
             <Actions runnerOk={snapshot.runner.ok} now={now} />
             {!snapshot.runner.ok && (
               <p className="notice">
