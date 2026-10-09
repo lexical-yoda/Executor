@@ -88,6 +88,19 @@ export function ServiceDrawer({ id }: { id: string }) {
       </div>
       <h3 className="drawer-title">{service.name}</h3>
       {service.description && <p className="muted">{service.description}</p>}
+      {service.discovered && (
+        <p className="small muted discovered-note">
+          Found automatically from the {service.stack ? <span className="mono">{service.stack}</span> : 'Docker'} stack. Its
+          name, group, link and check come from Docker; add it to config.yaml, or put executor.name, executor.group or
+          executor.url labels in its compose file, to change them.
+        </p>
+      )}
+      {service.error === 'Stack stopped' && (
+        <p className="small muted">
+          Its containers are gone but its stack folder is still there, so it counts as stopped rather than down. Delete the
+          stack and it leaves the page.
+        </p>
+      )}
       {service.url && (
         <a className="btn btn-ghost btn-small" href={service.url} target="_blank" rel="noopener noreferrer">
           <ExternalLink size={14} /> Open {service.name}
@@ -144,7 +157,7 @@ export function ServiceDrawer({ id }: { id: string }) {
           {history && !history.buckets.length && <p className="small muted">No checks recorded yet.</p>}
         </>
       )}
-      <SourceNote source="Executor's own checks and the runner's container list" at={service.checked_at} />
+      <SourceNote source={service.discovered ? "Docker's compose labels, the runner's container list and Executor's checks" : "Executor's own checks and the runner's container list"} at={service.checked_at} />
     </div>
   )
 }

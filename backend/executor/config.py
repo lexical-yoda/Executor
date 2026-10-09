@@ -234,6 +234,25 @@ class MediaIntegration(BaseModel):
     requests_interval: float = 60
 
 
+class Discovery(BaseModel):
+    # Stacks found from Docker itself (compose labels) and the runner's stacks
+    # folder. A stack none of whose containers a configured service lists
+    # appears on its own; a configured service whose containers and stack
+    # folder are both gone is dropped.
+    group: str = "Discovered"
+    # Host for links to a discovered stack's first published port, as seen
+    # from the browser (for example the server's address). No link when unset.
+    link_host: str | None = None
+    # Host the web container reaches published ports on, for a TCP check.
+    probe_host: str | None = None
+    # Stacks (compose project names) never shown.
+    ignore: list[str] = []
+    # Display names and groups by stack; compose labels executor.name,
+    # executor.group, executor.url and executor.hide do the same per stack.
+    names: dict[str, str] = {}
+    groups: dict[str, str] = {}
+
+
 class Integrations(BaseModel):
     beszel: BeszelIntegration | None = None
     edge: EdgeIntegration | None = None
@@ -247,6 +266,7 @@ class Config(BaseModel):
     site: Site = Site()
     settings: Settings = Settings()
     integrations: Integrations = Integrations()
+    discovery: Discovery | None = None
     groups: list[str] = []
     machines: list[Machine]
     services: list[Service]
@@ -350,6 +370,10 @@ class WatchedFolder(BaseModel):
 class ActionsConfig(BaseModel):
     ssh: dict[str, SshTarget] = {}
     files: list[WatchedFolder] = []
+    # A folder holding one subfolder per compose stack (as stack managers such
+    # as Dockhand keep them). The runner reports the subfolder names only, so
+    # the page can tell a stopped stack from a removed one.
+    stacks_dir: str | None = None
     actions: list[Action] = []
 
     @model_validator(mode="after")

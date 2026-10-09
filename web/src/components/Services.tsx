@@ -1,4 +1,4 @@
-import { Briefcase, Download, ExternalLink, Film, Globe, Image, Layers, Network, Search, Wrench } from 'lucide-react'
+import { Briefcase, Download, ExternalLink, Film, Globe, Image, Layers, Network, Radar, Search, Wrench } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { ContainerState, ServiceStatus } from '../api'
 import { latency } from '../format'
@@ -13,6 +13,7 @@ const GROUP_ICONS: Record<string, typeof Film> = {
   Tools: Wrench,
   'Network & Infra': Network,
   'Public edge': Globe,
+  Discovered: Radar,
 }
 
 export function containerTone(c: ContainerState) {
@@ -44,7 +45,14 @@ function Tile({ service, index }: { service: ServiceStatus; index: number }) {
           {service.name.slice(0, 2)}
         </span>
         <div className="tile-title">
-          <h3>{service.name}</h3>
+          <h3>
+            {service.name}
+            {service.discovered && (
+              <span className="auto-badge" title="Found from Docker; not in config.yaml">
+                auto
+              </span>
+            )}
+          </h3>
           <span className="small muted">
             {service.status === 'down' && service.error
               ? service.error

@@ -118,6 +118,17 @@ integrations:
         duplicati_job: Offsite - weekly
 
 # Display order of service groups. Groups not listed here follow in order of use.
+# Optional. Stacks found from Docker itself: a compose project none of whose
+# containers a service below lists appears on its own, named after the stack
+# (or its executor.name / executor.group / executor.url labels); with
+# stacks_dir set in actions.yaml, a listed service whose stack folder is
+# deleted disappears, and one whose folder remains shows as stopped.
+discovery:
+  link_host: 10.8.0.10              # links to a stack's first published port
+  probe_host: host.docker.internal  # TCP check on that port
+  ignore: [executor]
+  groups: {grafana: Monitoring}
+
 groups:
   - Media
   - Downloads

@@ -4391,3 +4391,23 @@ ul.recap-list {
   height: 8px;
   flex: none;
 }
+
+.auto-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  color: var(--data);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  vertical-align: 2px;
+}
+
+.discovered-note {
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1px dashed rgba(56, 189, 248, 0.35);
+}

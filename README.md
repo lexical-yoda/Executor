@@ -64,6 +64,29 @@ containers. The first container is the primary one.
 Machines are pinged over ICMP. The machine marked `local: true` is always up
 and reports load, memory and uptime from `/proc`.
 
+### Stack discovery (optional)
+
+With a `discovery` section in `config.yaml`, the service list follows what
+actually runs instead of only what is listed:
+
+- The runner reports each container's compose project (stack), service and
+  published ports. A stack none of whose containers a configured service lists
+  appears on its own, named after the stack, in the `Discovered` group, with a
+  link (`link_host`) and a TCP check (`probe_host`) on its lowest published
+  port. Labels in its compose file name it instead: `executor.name`,
+  `executor.group`, `executor.url`, and `executor.hide: "true"` to leave it out.
+- With `stacks_dir` in `actions.yaml` (a folder of one subfolder per stack,
+  such as a stack manager's), the runner also reports the subfolder names.
+  A stack with a folder but no containers shows as stopped (grey, no alert).
+  A configured service whose containers are gone shows as stopped while its
+  stack folder exists and disappears once the folder is deleted, so deleting
+  a stack removes its tile. The stack each container belonged to is remembered
+  in the data folder, because a removed container no longer says.
+- New and removed stacks are written to the event log.
+
+Configured services keep their names, groups, links and checks; discovery only
+adds around them.
+
 ### Machine stats (optional, via Beszel)
 
 Machines with a `beszel:` name get a richer card from a

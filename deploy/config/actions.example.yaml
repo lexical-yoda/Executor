@@ -34,6 +34,11 @@ files:
     path: /watch/config-pull
     tail: [history.log, last-error.txt]
 
+# Optional. The folder holding one subfolder per compose stack (for example a
+# stack manager's stacks directory, mounted into the runner at the same path).
+# Only the subfolder names are reported, for stack discovery.
+stacks_dir: /srv/stacks
+
 actions:
   - id: reset-download-stack
     title: Reset download stack

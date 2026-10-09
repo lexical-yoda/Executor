@@ -34,6 +34,7 @@ class DockerAPI:
             names = item.get("Names") or []
             name = names[0].lstrip("/") if names else item["Id"][:12]
             status = item.get("Status", "")
+            labels = item.get("Labels") or {}
             result.append(
                 {
                     "name": name,
@@ -41,6 +42,14 @@ class DockerAPI:
                     "health": _health(status),
                     "status": status,
                     "image": item.get("Image", ""),
+                    # The compose project (stack) and service the container belongs to.
+                    "project": labels.get("com.docker.compose.project"),
+                    "service": labels.get("com.docker.compose.service"),
+                    "working_dir": labels.get("com.docker.compose.project.working_dir"),
+                    # Only the executor.* labels, which name a stack on the page.
+                    "labels": {k: v for k, v in labels.items() if k.startswith("executor.")},
+                    "ports": sorted({p["PublicPort"] for p in item.get("Ports") or []
+                                     if p.get("PublicPort") and p.get("Type") == "tcp"}),
                 }
             )
         return sorted(result, key=lambda c: c["name"].lower())

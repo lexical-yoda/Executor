@@ -19,6 +19,10 @@ export interface ServiceStatus {
   error: string | null
   checked_at: string | null
   containers: ContainerState[]
+  /** Found from Docker rather than listed in config.yaml. */
+  discovered?: boolean
+  /** The compose stack a discovered service stands for. */
+  stack?: string | null
 }
 
 export interface MachineDetails {

@@ -116,7 +116,7 @@ def create_web_app(config: Config, runner: RunnerClient | None, static_dir: Path
 
     @app.get("/api/services/{service_id}/history")
     async def service_history(service_id: str, hours: int = 24) -> dict:
-        if not any(s.id == service_id for s in config.services):
+        if service_id not in monitor.service_ids():
             raise HTTPException(404, "No such service.")
         hours = max(1, min(hours, 720))
         bucket = 300 if hours <= 24 else 3600 if hours <= 168 else 6 * 3600

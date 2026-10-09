@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 from datetime import datetime, timezone
@@ -11,6 +12,7 @@ import httpx
 
 from .checks import Probe, http_probe, local_stats, ping, tcp_probe
 from .config import Config, Machine, Service
+from .discovery import Plan, plan, remember
 from .events import Tracker
 from .history import MediaHistory
 from .sources.aws import CloudWatchS3
@@ -66,6 +68,13 @@ class RunnerClient:
         response.raise_for_status()
         return response.json()
 
+    async def stacks(self) -> list[str] | None:
+        """Stack folder names, or None when the runner has no stacks folder (or cannot read it)."""
+        response = await self._client.get("/stacks")
+        response.raise_for_status()
+        body = response.json()
+        return body["stacks"] if body.get("configured") and body.get("ok") else None
+
 
 def service_status(service: Service, probe: Probe | None,
                    containers: dict[str, dict] | None) -> tuple[str, list[dict]]:
@@ -101,6 +110,18 @@ class Monitor:
         self.tracker = Tracker(store)
         self._download_bytes: float | None = None
         self._backfilled: set[str] = set()
+        # Stack discovery: folder names from the runner, each container's stack
+        # (remembered, since a removed container no longer says) and the plan.
+        self.stack_dirs: list[str] | None = None
+        self._stacks_checked = float("-inf")
+        self.stack_memory: dict[str, list[str]] = {}
+        if store:
+            try:
+                self.stack_memory = json.loads(store.get_state("container_stacks") or "{}")
+            except ValueError:
+                self.stack_memory = {}
+        self.plan: Plan = plan(config.services, None, None, self.stack_memory, config.discovery)
+        self._plan_seen: set[str] | None = None
         self.watching: list[dict] = []
         self.watching_error: str | None = None
         self.watching_checked: float | None = None
@@ -211,9 +232,50 @@ class Monitor:
             client = self._http if check.verify_tls else self._http_insecure
             self.probes[service.id] = await http_probe(check, client)
 
+    # --- services: configured plus discovered ---------------------------------
+    def services(self) -> list[Service]:
+        return [s for s, _ in self.plan.configured] + [s for s, _, _ in self.plan.discovered]
+
+    def service_ids(self) -> set[str]:
+        return {s.id for s in self.services()}
+
+    def _stack_info(self, service: Service) -> tuple[bool, str | None, bool]:
+        """(discovered, stack name, stopped) for one service in the current plan."""
+        for s, stack, stopped in self.plan.discovered:
+            if s.id == service.id:
+                return True, stack, stopped
+        for s, state in self.plan.configured:
+            if s.id == service.id:
+                return False, None, state == "stopped"
+        return False, None, False
+
+    def _replan(self) -> None:
+        """Recompute which services show, and log stacks that appear or go."""
+        previous = {s.id: s.name for s in self.services()} | {i: i for i in self.plan.removed}
+        self.plan = plan(self.config.services, self.containers, self.stack_dirs, self.stack_memory,
+                         self.config.discovery)
+        current = {s.id: s.name for s in self.services()}
+        if self._plan_seen is None:
+            # The first full picture is the baseline.
+            self._plan_seen = set(current)
+            return
+        names = {s.id: s.name for s in self.config.services}
+        for service_id in sorted(set(current) - self._plan_seen):
+            discovered = any(s.id == service_id for s, _, _ in self.plan.discovered)
+            if discovered:
+                self.tracker.emit("service", "info", f"New stack found: {current[service_id]}",
+                                  "Discovered from Docker; add it to config.yaml to name, group or check it",
+                                  ref=f"service:{service_id}")
+        for service_id in sorted(self._plan_seen - set(current)):
+            name = names.get(service_id) or previous.get(service_id) or service_id
+            self.tracker.emit("service", "info", f"{name} was removed",
+                              "Its containers and stack folder are gone", ref=None)
+        self._plan_seen = set(current)
+
     async def check_services(self) -> None:
-        await asyncio.gather(*(self._probe(s) for s in self.config.services))
-        services = [self._service(s) for s in self.config.services]
+        current = self.services()
+        await asyncio.gather(*(self._probe(s) for s in current))
+        services = [self._service(s) for s in current]
         self.tracker.services(services)
         if self.store:
             self._safely(self.store.record_checks, [(s["id"], s["status"], s["latency_ms"]) for s in services])
@@ -262,7 +324,16 @@ class Monitor:
             return
         self.containers = {c["name"]: c for c in items}
         self.runner_error = None
-        self.tracker.containers(self.containers, {name for s in self.config.services for name in s.containers})
+        if remember(self.stack_memory, self.containers) and self.store:
+            self._safely(self.store.set_state, "container_stacks", json.dumps(self.stack_memory))
+        if self.config.discovery and time.monotonic() - self._stacks_checked > 60:
+            self._stacks_checked = time.monotonic()
+            try:
+                self.stack_dirs = await self.runner.stacks()
+            except Exception as exc:  # noqa: BLE001 - discovery is a nicety; keep the last answer
+                log.warning("runner stacks report failed: %s", exc)
+        self._replan()
+        self.tracker.containers(self.containers, {name for s in self.services() for name in s.containers})
 
     async def poll_edge(self) -> None:
         settings = self.edge_settings
@@ -553,6 +624,11 @@ class Monitor:
     def _service(self, service: Service) -> dict:
         probe = self.probes.get(service.id)
         status, states = service_status(service, probe, self.containers)
+        discovered, stack, stopped = self._stack_info(service)
+        error = probe.error if probe else None
+        if stopped:
+            # Deliberately down: the stack's containers are gone but its folder is still there.
+            status, error = "unknown", "Stack stopped"
         return {
             "id": service.id,
             "name": service.name,
@@ -562,19 +638,30 @@ class Monitor:
             "status": status,
             "latency_ms": probe.latency_ms if probe else None,
             "http_status": probe.http_status if probe else None,
-            "error": probe.error if probe else None,
+            "error": error,
             "checked_at": probe.checked_at if probe else None,
             "containers": states,
+            "discovered": discovered,
+            "stack": stack,
         }
 
     def snapshot(self) -> dict:
         machines = [self._machine(m) for m in self.config.machines]
-        services = [self._service(s) for s in self.config.services]
+        current = self.services()
+        services = [self._service(s) for s in current]
         containers = list(self.containers.values()) if self.containers is not None else []
+        groups = list(self.config.ordered_groups)
+        for service in current:
+            if service.group not in groups:
+                groups.append(service.group)
+        if self.config.discovery and self.config.discovery.group in groups:
+            # Stacks nobody has placed yet come last.
+            groups.remove(self.config.discovery.group)
+            groups.append(self.config.discovery.group)
         return {
             "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "site": self.config.site.model_dump(),
-            "groups": self.config.ordered_groups,
+            "groups": groups,
             "machines": machines,
             "services": services,
             "summary": {

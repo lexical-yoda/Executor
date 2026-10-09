@@ -115,6 +115,26 @@ def describe_folder(folder: WatchedFolder) -> dict:
     return {"id": folder.id, "ok": True, "error": None, "entries": entries[:MAX_ENTRIES], "tails": tails}
 
 
+COMPOSE_FILES = ("compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml")
+
+
+def list_stacks(folder: str | None) -> list[str] | None:
+    """Names of the subfolders of the stacks folder that hold a compose file.
+    Never follows symlinks and reports nothing but the names."""
+    if not folder:
+        return None
+    names = []
+    try:
+        with os.scandir(folder) as listing:
+            for entry in listing:
+                if entry.is_dir(follow_symlinks=False) and any(
+                        os.path.isfile(os.path.join(entry.path, f)) for f in COMPOSE_FILES):
+                    names.append(entry.name)
+    except OSError:
+        return None
+    return sorted(names)
+
+
 class StartRequest(BaseModel):
     action: str
     requested_by: str = "unknown"
@@ -375,6 +395,11 @@ def create_runner_app(actions: ActionsConfig, token: str, docker: DockerAPI, dat
     @app.get("/files", dependencies=guarded)
     async def files() -> list[dict]:
         return await asyncio.gather(*(asyncio.to_thread(describe_folder, f) for f in actions.files))
+
+    @app.get("/stacks", dependencies=guarded)
+    async def stacks() -> dict:
+        names = await asyncio.to_thread(list_stacks, actions.stacks_dir)
+        return {"configured": actions.stacks_dir is not None, "ok": names is not None, "stacks": names or []}
 
     @app.get("/actions", dependencies=guarded)
     async def list_actions() -> list[dict]:
