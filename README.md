@@ -60,6 +60,7 @@ containers. The first container is the primary one.
 | Degraded | The probe passed, but a secondary container is stopped, missing, unhealthy or starting |
 | Down | The probe failed, or the primary container is not running |
 | Unknown | No probe has run yet and container states are unavailable |
+| Stack stopped | With stack discovery: the stack's containers were removed but its folder is still there (grey, no alert) |
 
 Machines are pinged over ICMP. The machine marked `local: true` is always up
 and reports load, memory and uptime from `/proc`.
@@ -94,9 +95,10 @@ adds around them.
 
 Machines with a `beszel:` name get a richer card from a
 [Beszel](https://beszel.dev) hub: CPU, memory, GPU, ZFS pools with health,
-temperatures, network rates, a one-hour sparkline, and a history view (1 hour
-to 30 days) drawn from Beszel's own records. Executor never stores this
-history; it reads it. Configure `integrations.beszel.url` and give the web
+temperatures, network rates, a one-hour sparkline, and history charts. Ranges
+up to 30 days are read from Beszel's own records; the 90-day and 1-year
+ranges come from Executor's hourly averages (see "History, uptime and the
+event log"), seeded from what Beszel keeps. Configure `integrations.beszel.url` and give the web
 container a Beszel user with the `readonly` role through `BESZEL_EMAIL` and
 `BESZEL_PASSWORD`. Machines without a `beszel:` name show as compact
 online/offline cards.
@@ -137,7 +139,7 @@ failed logins, so check its password before deploying.
 
 ### Now playing and location history (optional)
 
-With the `jellyfin` integration, the Media section shows who is watching
+With the `jellyfin` integration, the Holonet deck shows who is watching
 what, from which city and address, with progress and whether the stream is
 transcoding. With `history_days` set and a writable `EXECUTOR_WEB_DATA`
 folder, Executor also keeps a location history:
@@ -416,8 +418,9 @@ Tests: `cd backend && ../.venv/bin/python -m pytest -q`. Tests that check a real
 
 ## Roadmap
 
-1. **Phase 1:** status for every service and machine, and one-click actions.
-2. **Phase 2 (in progress):** machine stats and history from Beszel (done);
+1. **Phase 1:** status for every service and machine, and one-click actions
+   (done).
+2. **Phase 2:** machine stats and history from Beszel (done);
    bandwidth and certificate expiry (done); more actions, with ssh and http
    steps and an active-stream warning (done); backups panel (done); media
    panels (done); S3 storage size and growth (done).
@@ -426,4 +429,5 @@ Tests: `cd backend && ../.venv/bin/python -m pytest -q`. Tests that check a real
 4. **Phase 4:** decks instead of one long page, drawers for every detail, a
    self-hosted vector map, hold-to-launch actions with a live pipeline, the
    event log, uptime history, a year of machine history, the weekly recap and
-   the demo tour (done).
+   the demo tour (done); stack discovery, so the service list follows the
+   stacks that actually run (done).

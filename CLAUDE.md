@@ -23,7 +23,20 @@ read the git-ignored `PLAN.local.md` (plan, decisions, state and history) and
   non-root, read-only and capability-free.
 - **Every non-GET request must pass the guard in `backend/executor/security.py`.**
   Frontend calls that change anything send `X-Executor: 1` and JSON.
-- **Service keys, when later phases need them, stay server-side** in the stack's
-  `.env`; the browser never receives them.
+- **Service keys stay server-side** in the stack's `.env`; the browser never
+  receives them.
+- **The page loads nothing from other origins** (CSP `default-src 'self'`).
+  Map tiles are `.pmtiles` archives in the stack's `tiles/` folder, served by
+  the web container; map fonts and icons are fetched at build time by
+  `web/scripts/map-assets.sh` (pinned commit) into `web/public/map/`. Never
+  commit tiles or map assets, and never point the map at a hosted tile service.
+- **The runner reports names, never contents or paths from requests.** Watched
+  folders (`files:`) and the stacks folder (`stacks_dir:`) are fixed in
+  `actions.yaml`; it reports file names, sizes, times, configured log tails and
+  stack folder names only.
+- **Frontend layout:** decks in `web/src/decks/`, one drawer for every detail
+  (`components/Drawer.tsx`, routed through the URL hash in `route.ts`), the
+  map in `web/src/map/`. New clickable things open a drawer kind rather than a
+  modal.
 - Before committing: `cd backend && ../.venv/bin/python -m pytest -q`,
   `cd web && npm run build`, and check `git status` lists no private file.
