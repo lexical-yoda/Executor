@@ -207,10 +207,15 @@ function PlaceDetails({ place, now, onUser }: { place: PlaceGroup; now: number; 
   )
 }
 
+const SOURCE_NAMES: Record<string, string> = { geolite2: 'GeoLite2', dbip: 'DB-IP' }
+
 function sourceNote(place: Partial<Place>): string {
   if (place.source === 'home') return 'same address as the server'
   if (place.source === 'correction') return 'your correction'
-  const name = place.source === 'geolite2' ? 'GeoLite2' : place.source === 'dbip' ? 'DB-IP' : 'database'
+  const name = SOURCE_NAMES[place.source ?? ''] ?? 'database'
+  if (place.within) {
+    return `${name}, inside ${SOURCE_NAMES[place.within.source] ?? 'another database'}'s ${place.within.km} km area`
+  }
   return place.radius_km ? `${name}, within about ${place.radius_km} km` : name
 }
 
@@ -241,7 +246,13 @@ function StreamDetails({ stream, jellyfin }: { stream: Watching; jellyfin: Jelly
         <dd>
           {place ? [place.city, place.region, place.country].filter(Boolean).join(', ') : 'Unknown'}
           {place && <span className="small muted"> · {sourceNote(place)}</span>}
-          {stream.location_alt && <span className="small muted"> (DB-IP says {placeName(stream.location_alt)})</span>}
+          {stream.location_alt && (
+            <span className="small muted">
+              {' '}
+              ({SOURCE_NAMES[stream.location_alt.source ?? ''] ?? 'The other database'} says{' '}
+              {placeName(stream.location_alt)})
+            </span>
+          )}
         </dd>
         <dt>Address</dt>
         <dd className="mono">{stream.ip ?? '—'}</dd>
