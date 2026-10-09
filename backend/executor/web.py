@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -12,6 +13,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .config import Config
+from .history import MediaHistory
 from .monitor import Monitor, RunnerClient
 from .security import Guard
 from .sources.aws import CloudWatchS3
@@ -26,8 +28,10 @@ log = logging.getLogger("executor.web")
 def create_web_app(config: Config, runner: RunnerClient | None, static_dir: Path | None,
                    start_monitor: bool = True, beszel: Beszel | None = None,
                    jellyfin: Jellyfin | None = None, duplicati: Duplicati | None = None,
-                   media: MediaSources | None = None, cloudwatch: CloudWatchS3 | None = None) -> FastAPI:
-    monitor = Monitor(config, runner, beszel, duplicati, media, cloudwatch)
+                   media: MediaSources | None = None, cloudwatch: CloudWatchS3 | None = None,
+                   history: MediaHistory | None = None) -> FastAPI:
+    monitor = Monitor(config, runner, beszel, duplicati, media, cloudwatch, history)
+    user_id_pattern = re.compile(r"^[0-9a-f]{32}$")
     posters: dict[tuple[str, int], tuple[bytes, str]] = {}
     history_cache: dict[tuple[str, str], tuple[float, dict]] = {}
     streams_cache: list = []  # [(monotonic time, body)]
@@ -42,6 +46,8 @@ def create_web_app(config: Config, runner: RunnerClient | None, static_dir: Path
             await runner.close()
         if jellyfin:
             await jellyfin.close()
+        if history and history.store:
+            history.store.close()
 
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     app.state.monitor = monitor
@@ -104,6 +110,36 @@ def create_web_app(config: Config, runner: RunnerClient | None, static_dir: Path
             body = {"configured": True, "ok": False, "error": message, "streams": []}
         streams_cache[:] = [(now, body)]
         return body
+
+    def history_store():
+        if history is None or history.store is None:
+            raise HTTPException(404, "Location history is not enabled.")
+        return history.store
+
+    def since(days: int) -> float:
+        keep = history.keep_days if history else 90
+        return time.time() - max(1, min(days, keep)) * 86400
+
+    def user_param(user: str | None) -> str | None:
+        if user is None or user == "":
+            return None
+        if not user_id_pattern.match(user):
+            raise HTTPException(400, "Unknown user id.")
+        return user
+
+    @app.get("/api/media/users")
+    async def media_users(days: int = 90) -> dict:
+        return {"users": history_store().users(since(days))}
+
+    @app.get("/api/media/places")
+    async def media_places(days: int = 90, user: str | None = None) -> dict:
+        return history_store().places(since(days), user_param(user))
+
+    @app.get("/api/media/trail")
+    async def media_trail(user: str, days: int = 90) -> dict:
+        user_id = user_param(user)
+        assert user_id is not None
+        return {"user": user_id, "sightings": history_store().trail(user_id, since(days))}
 
     @app.get("/api/media/poster/{kind}/{tmdb_id}")
     async def poster(kind: str, tmdb_id: int) -> Response:

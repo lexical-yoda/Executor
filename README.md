@@ -88,6 +88,29 @@ All read-only. Keys come from `JELLYSEERR_API_KEY`, `SONARR_API_KEY`,
 one out and that part is skipped. qBittorrent bans an address after repeated
 failed logins, so check its password before deploying.
 
+### Now playing and location history (optional)
+
+With the `jellyfin` integration, the Media section shows who is watching
+what, from which city and address, with progress and whether the stream is
+transcoding. With `history_days` set and a writable `EXECUTOR_WEB_DATA`
+folder, Executor also keeps a location history:
+
+- Jellyfin's sessions are sampled every 30 seconds, and its activity log
+  (which records the address of every session start for about a month) is
+  imported, so history starts with what Jellyfin already knows.
+- Each address is looked up in the free DB-IP Lite City database, downloaded
+  monthly into the data folder. Lookups are local; addresses are never sent
+  to any other service. Accuracy is city level at best: mobile carriers often
+  place users in a hub city, and VPN users appear at the VPN's exit. The page
+  credits DB-IP as its CC BY 4.0 licence requires.
+- History older than `history_days` is deleted daily.
+- `GET /api/media/users`, `/api/media/places` and `/api/media/trail` serve
+  the history to the page.
+
+**Presentation mode** (the eye button in the header) blurs every username on
+the page, for showing the dashboard to others. Locations and addresses stay
+visible. The choice is remembered per browser.
+
 ### Backups panel (optional)
 
 One card per backup, with its state (OK, warnings, failed, overdue, running),
@@ -266,5 +289,6 @@ Tests: `cd backend && ../.venv/bin/python -m pytest -q`. Tests that check a real
    bandwidth and certificate expiry (done); more actions, with ssh and http
    steps and an active-stream warning (done); backups panel (done); media
    panels (done); S3 storage size and growth (done).
-3. **Phase 3:** a media section: now playing, active users, a globe of login
-   locations, and per-user location history.
+3. **Phase 3 (in progress):** now playing, location history and presentation
+   mode (done); a globe of locations on desktop and a flat map on phones,
+   with a per-user timeline.

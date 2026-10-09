@@ -1,7 +1,8 @@
 import { ArrowDown, ArrowUp, Clapperboard, Download, Inbox, Tv } from 'lucide-react'
 import { useState } from 'react'
-import type { Media as MediaData, MediaRequest, QueueItem } from '../api'
+import type { JellyfinStatus, Media as MediaData, MediaRequest, QueueItem } from '../api'
 import { ago, bytes, duration, rate } from '../format'
+import { NowPlaying } from './NowPlaying'
 
 function seasons(list: number[]): string {
   if (!list.length) return ''
@@ -187,16 +188,27 @@ function DownloadsCard({ data }: { data: MediaData['downloads'] }) {
   )
 }
 
-export function Media({ media, now }: { media: MediaData; now: number }) {
+export function Media({
+  media,
+  jellyfin,
+  now,
+}: {
+  media: MediaData | null
+  jellyfin: JellyfinStatus | null
+  now: number
+}) {
   return (
     <section className="section">
       <div className="section-head">
         <h2>Media</h2>
       </div>
-      <div className="media-grid">
-        {media.requests.configured && <RequestsCard data={media.requests} now={now} />}
-        <DownloadsCard data={media.downloads} />
-      </div>
+      {jellyfin && <NowPlaying data={jellyfin} />}
+      {media && (
+        <div className="media-grid">
+          {media.requests.configured && <RequestsCard data={media.requests} now={now} />}
+          <DownloadsCard data={media.downloads} />
+        </div>
+      )}
     </section>
   )
 }

@@ -4,3 +4,4 @@ httpx==0.28.1
 pyyaml==6.0.3
 icmplib==3.0.4
 certifi==2026.7.22
+maxminddb==3.2.0

@@ -91,8 +91,24 @@ def main() -> None:
             else:
                 logging.getLogger("executor").warning("storage configured but AWS keys not set; "
                                                       "showing Duplicati's figures only")
+        history = None
+        if jellyfin and config.integrations.jellyfin:
+            from .history import MediaHistory
+            from .sources.geo import GeoIP
+            from .store import Store
+
+            settings = config.integrations.jellyfin
+            data = Path(os.environ.get("EXECUTOR_WEB_DATA", "/data"))
+            store = geo = None
+            if settings.history_days and data.is_dir() and os.access(data, os.W_OK):
+                store = Store(data / "executor.db")
+                geo = GeoIP(data / "geo")
+            elif settings.history_days:
+                logging.getLogger("executor").warning(
+                    "location history off: %s is missing or not writable", data)
+            history = MediaHistory(jellyfin, store, geo, settings.history_days)
         app = create_web_app(config, runner, static, beszel=beszel, jellyfin=jellyfin, duplicati=duplicati,
-                             media=media, cloudwatch=cloudwatch)
+                             media=media, cloudwatch=cloudwatch, history=history)
         uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "1977")), **common)
 
     elif role == "runner":

@@ -112,11 +112,22 @@ class EdgeIntegration(BaseModel):
     interval: float = 300
 
 
+class GlobePoint(BaseModel):
+    label: str
+    lat: float = Field(ge=-90, le=90)
+    lon: float = Field(ge=-180, le=180)
+
+
 class JellyfinIntegration(BaseModel):
     # Server URL as seen from the web container. The API key comes from the
     # environment (JELLYFIN_API_KEY), never from this file.
     url: str
     timeout: float = 8.0
+    # Days of location history to keep in the web data folder. 0 turns
+    # history (and the geolocation download) off.
+    history_days: int = Field(default=90, ge=0, le=400)
+    # Where streams are served from, drawn as the end of each arc on the map.
+    hub: GlobePoint | None = None
 
 
 class DuplicatiIntegration(BaseModel):

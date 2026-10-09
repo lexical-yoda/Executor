@@ -40,6 +40,9 @@ services:
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
     volumes:
       - ${EXECUTOR_DIR:?set EXECUTOR_DIR in .env}/config/config.yaml:/config/config.yaml:ro
+      # Optional writable folder for media location history and the
+      # geolocation database. Must be owned by uid 10001.
+      - ${EXECUTOR_WEB_DATA:-/var/empty}:/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
     sysctls:

@@ -27,7 +27,9 @@ export default function App() {
           <>
             <Machines machines={snapshot.machines} now={now} />
             {snapshot.edge && <Edge edge={snapshot.edge} now={now} />}
-            {snapshot.media && <Media media={snapshot.media} now={now} />}
+            {(snapshot.media || snapshot.jellyfin) && (
+              <Media media={snapshot.media} jellyfin={snapshot.jellyfin} now={now} />
+            )}
             {snapshot.backups && <Backups backups={snapshot.backups} now={now} />}
             <Actions runnerOk={snapshot.runner.ok} now={now} />
             {!snapshot.runner.ok && (

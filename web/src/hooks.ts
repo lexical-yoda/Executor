@@ -51,3 +51,23 @@ export function useNow(stepMs = 1000) {
   }, [stepMs])
   return now
 }
+
+/** Presentation mode blurs usernames; remembered per browser. */
+export function usePresentation(): [boolean, () => void] {
+  const [on, setOn] = useState<boolean>(() => {
+    try {
+      return window.localStorage.getItem('executor.presenting') === '1'
+    } catch {
+      return false
+    }
+  })
+  useEffect(() => {
+    document.documentElement.classList.toggle('presenting', on)
+    try {
+      window.localStorage.setItem('executor.presenting', on ? '1' : '0')
+    } catch {
+      /* storage can be unavailable; the toggle still works for this visit */
+    }
+  }, [on])
+  return [on, () => setOn((v) => !v)]
+}

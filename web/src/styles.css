@@ -1653,6 +1653,112 @@ a.tile:hover .tile-link {
 
 /* ---------- Small screens ------------------------------------------------- */
 
+/* --- Now playing and presentation mode --- */
+.now-playing {
+  margin-bottom: 14px;
+}
+
+.pulse-icon {
+  color: var(--up);
+  animation: breathe 1.8s ease-in-out infinite;
+}
+
+.streams-live {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 12px 18px;
+}
+
+.stream-row {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.stream-icon {
+  color: var(--accent);
+  padding-top: 2px;
+}
+
+.stream-body {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.stream-line {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.stream-who {
+  flex: none;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.stream-what {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13.5px;
+}
+
+.stream-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: center;
+}
+
+.stream-meta svg {
+  vertical-align: -1px;
+}
+
+.stream-paused .stream-what {
+  color: var(--muted);
+}
+
+.badge-soft {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  font-size: 10.5px;
+}
+
+.badge-warn {
+  color: var(--degraded);
+  border-color: color-mix(in srgb, var(--degraded) 40%, transparent);
+}
+
+.present-btn {
+  margin-left: 4px;
+}
+
+.present-on {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  background: var(--accent-soft);
+}
+
+.user-name {
+  transition: filter 0.25s ease;
+}
+
+.presenting .user-name {
+  filter: blur(5px);
+  user-select: none;
+}
+
 /* --- Media --- */
 .media-grid {
   display: grid;

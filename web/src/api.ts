@@ -107,6 +107,7 @@ export interface Snapshot {
   edge: Edge | null
   backups: Backups | null
   media: Media | null
+  jellyfin: JellyfinStatus | null
 }
 
 export interface Bandwidth {
@@ -271,6 +272,76 @@ export interface Media {
   }
 }
 
+export interface Place {
+  city: string | null
+  region: string | null
+  country: string | null
+  country_code: string | null
+  lat: number
+  lon: number
+}
+
+export interface Watching {
+  user: string
+  user_id: string | null
+  title: string
+  kind: string | null
+  client: string | null
+  device: string | null
+  ip: string | null
+  paused: boolean
+  transcoding: boolean
+  progress: number | null
+  runtime_s: number | null
+  last_activity: string | null
+  location: Place | null
+}
+
+export interface JellyfinStatus {
+  ok: boolean
+  error: string | null
+  checked_at: number | null
+  watching: Watching[]
+  history: {
+    enabled: boolean
+    keep_days: number
+    geo_ready: boolean
+    geo_month: string | null
+    geo_error: string | null
+    sightings: number
+    error: string | null
+  }
+  hub: { label: string; lat: number; lon: number } | null
+}
+
+export interface MediaUser {
+  id: string
+  name: string
+  sightings: number
+  last_seen: number
+  places: number
+}
+
+export interface PlaceGroup extends Place {
+  count: number
+  first_seen: number
+  last_seen: number
+  users: { id: string; name: string; count: number; last_seen: number }[]
+}
+
+export interface Sighting extends Partial<Place> {
+  id: number
+  user_id: string
+  user_name: string
+  ip: string
+  device: string | null
+  client: string | null
+  item: string | null
+  source: 'session' | 'log'
+  first_seen: number
+  last_seen: number
+}
+
 export type HistoryRange = '1h' | '12h' | '24h' | '7d' | '30d'
 
 export interface MachineHistory {
@@ -364,6 +435,13 @@ export const api = {
     request<MachineHistory>(`/api/machines/${encodeURIComponent(machine)}/history?range=${range}`),
   actions: () => request<ActionInfo[]>('/api/actions'),
   streams: () => request<Streams>('/api/streams'),
+  mediaUsers: (days: number) => request<{ users: MediaUser[] }>(`/api/media/users?days=${days}`),
+  mediaPlaces: (days: number, user?: string) =>
+    request<{ places: PlaceGroup[]; unlocated: number }>(
+      `/api/media/places?days=${days}${user ? `&user=${encodeURIComponent(user)}` : ''}`,
+    ),
+  mediaTrail: (user: string, days: number) =>
+    request<{ user: string; sightings: Sighting[] }>(`/api/media/trail?user=${encodeURIComponent(user)}&days=${days}`),
   runs: () => request<{ busy: string | null; runs: RunSummary[] }>('/api/runs'),
   run: (id: string, offset: number) => request<RunDetail>(`/api/runs/${id}?offset=${offset}`),
   start: (id: string) =>

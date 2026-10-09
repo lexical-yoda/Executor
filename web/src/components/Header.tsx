@@ -1,5 +1,7 @@
+import { Eye, EyeOff } from 'lucide-react'
 import type { Snapshot } from '../api'
 import { ago } from '../format'
+import { usePresentation } from '../hooks'
 
 function Meter({ label, value, total, known = true }: { label: string; value: number; total: number; known?: boolean }) {
   const ratio = known && total ? value / total : 0
@@ -62,6 +64,7 @@ export function Header({
   }
 
   const stale = updatedAt !== null && now - updatedAt > 30_000
+  const [presenting, togglePresenting] = usePresentation()
 
   return (
     <header className="header">
@@ -94,6 +97,15 @@ export function Header({
           total={s?.containers_total ?? 0}
           known={!!s?.containers_known}
         />
+        <button
+          type="button"
+          className={`icon-btn present-btn${presenting ? ' present-on' : ''}`}
+          onClick={togglePresenting}
+          aria-pressed={presenting}
+          title={presenting ? 'Presentation mode on: usernames are blurred' : 'Presentation mode: blur usernames'}
+        >
+          {presenting ? <EyeOff size={17} /> : <Eye size={17} />}
+        </button>
       </div>
     </header>
   )

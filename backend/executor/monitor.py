@@ -11,6 +11,7 @@ import httpx
 
 from .checks import Probe, http_probe, local_stats, ping, tcp_probe
 from .config import Config, Machine, Service
+from .history import MediaHistory
 from .sources.aws import CloudWatchS3
 from .sources.backups import evaluate_files
 from .sources.beszel import Beszel, summarize, to_series
@@ -76,8 +77,13 @@ def service_status(service: Service, probe: Probe | None,
 class Monitor:
     def __init__(self, config: Config, runner: RunnerClient | None,
                  beszel: Beszel | None = None, duplicati: Duplicati | None = None,
-                 media: MediaSources | None = None, cloudwatch: CloudWatchS3 | None = None) -> None:
+                 media: MediaSources | None = None, cloudwatch: CloudWatchS3 | None = None,
+                 history: MediaHistory | None = None) -> None:
         self.config = config
+        self.history = history
+        self.watching: list[dict] = []
+        self.watching_error: str | None = None
+        self.watching_checked: float | None = None
         self.cloudwatch = cloudwatch
         self.storage: dict[str, dict] = {}
         self.storage_errors: dict[str, str] = {}
@@ -134,6 +140,11 @@ class Monitor:
                     self._loop(self.poll_storage, self.backup_settings.storage_interval)))
         if self.media and self.media_settings:
             self._tasks.append(asyncio.create_task(self._loop(self.poll_media, self.media_settings.interval)))
+        if self.history:
+            self._tasks += [
+                asyncio.create_task(self._loop(self.poll_watching, 30)),
+                asyncio.create_task(self._loop(self.poll_history, 300)),
+            ]
         if self.beszel:
             self._tasks += [
                 asyncio.create_task(self._loop(self.poll_beszel, settings.stats_interval)),
@@ -285,6 +296,38 @@ class Monitor:
                 "torrents": {"configured": media.qbittorrent is not None, "ok": self.torrents_error is None,
                              "error": self.torrents_error, **(self.torrents or {})},
             },
+        }
+
+    async def poll_watching(self) -> None:
+        assert self.history is not None
+        try:
+            self.watching = await self.history.sample()
+            self.watching_error = None
+        except Exception as exc:  # noqa: BLE001
+            log.warning("jellyfin sessions failed: %s", exc)
+            self.watching_error = self._reason(exc)
+        self.watching_checked = time.time()
+
+    async def poll_history(self) -> None:
+        assert self.history is not None
+        try:
+            await self.history.maintain()
+            self.history.error = None
+        except Exception as exc:  # noqa: BLE001
+            log.warning("history upkeep failed: %s", exc)
+            self.history.error = self._reason(exc)
+
+    def _jellyfin(self) -> dict | None:
+        if not self.history:
+            return None
+        hub = self.config.integrations.jellyfin.hub if self.config.integrations.jellyfin else None
+        return {
+            "ok": self.watching_error is None,
+            "error": self.watching_error,
+            "checked_at": self.watching_checked,
+            "watching": self.watching,
+            "history": self.history.status(),
+            "hub": hub.model_dump() if hub else None,
         }
 
     async def poll_storage(self) -> None:
@@ -443,4 +486,5 @@ class Monitor:
             "edge": self._edge(),
             "backups": self._backups(),
             "media": self._media(),
+            "jellyfin": self._jellyfin(),
         }
