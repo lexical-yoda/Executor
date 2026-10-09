@@ -33,7 +33,8 @@ def seerr_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"name": "Show", "firstAirDate": "2011-04-17",
                                          "posterPath": "/../../etc/passwd"})
     if path == "/imageproxy/tmdb/t/p/w300_and_h450_face/abc.jpg":
-        return httpx.Response(200, content=PNG, headers={"content-type": "image/png"})
+        # As Jellyseerr labels JPEGs.
+        return httpx.Response(200, content=PNG, headers={"content-type": "image/jpg"})
     return httpx.Response(404)
 
 
@@ -50,7 +51,7 @@ def test_requests_with_titles_and_safe_posters():
         assert show["title"] == "Show" and show["seasons"] == [1, 2]
         # A poster path that is not a plain file name is never used.
         assert show["has_poster"] is False and seerr.poster_path("tv", 22) is None
-        assert await seerr.poster("movie", 11) == (PNG, "image/png")
+        assert await seerr.poster("movie", 11) == (PNG, "image/jpeg")
         assert await seerr.poster("movie", 999) is None
 
     asyncio.run(check())
@@ -154,4 +155,4 @@ def test_monitor_and_poster_endpoint():
     assert c.get("/api/media/poster/person/11").status_code == 404
     response = c.get("/api/media/poster/movie/11")
     assert response.status_code == 200 and response.content == PNG
-    assert response.headers["content-type"] == "image/png"
+    assert response.headers["content-type"] == "image/jpeg"

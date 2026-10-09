@@ -98,7 +98,9 @@ class Jellyseerr:
         if not path:
             return None
         response = await self._client.get(POSTER.format(path=path))
-        kind_header = response.headers.get("content-type", "").split(";")[0]
+        # Jellyseerr's image proxy labels JPEGs "image/jpg"; serve the standard type.
+        kind_header = response.headers.get("content-type", "").split(";")[0].strip().lower()
+        kind_header = {"image/jpg": "image/jpeg"}.get(kind_header, kind_header)
         if response.status_code != 200 or kind_header not in ("image/jpeg", "image/png", "image/webp"):
             return None
         return response.content, kind_header
