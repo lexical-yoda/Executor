@@ -42,5 +42,13 @@ read the git-ignored `PLAN.local.md` (plan, decisions, state and history) and
   (`components/Drawer.tsx`, routed through the URL hash in `route.ts`), the
   map in `web/src/map/`. New clickable things open a drawer kind rather than a
   modal.
+- **One visual language:** statuses and tags use `components/Badge.tsx`, card
+  headings the `.card-head` pattern, actions `AttachedActions` (one row at the
+  foot of a card), time ranges `components/RangePicker.tsx`, deck sections
+  `DeckSection` (foldable). Reuse them rather than adding new variants.
+- **Keep the page light on phones:** no CSS animation that runs forever, no
+  `backdrop-filter` on touch screens, the map animates only while something is
+  live and on screen, relative times read `useClock()` (not a per-second
+  clock), and object props to the map go through `useStable`.
 - Before committing: `cd backend && ../.venv/bin/python -m pytest -q`,
   `cd web && npm run build`, and check `git status` lists no private file.
