@@ -346,7 +346,7 @@ a {
   padding: 20px;
 }
 
-/* ---------- Status dots and pills ---------------------------------------- */
+/* ---------- Status dots and badges --------------------------------------- */
 
 .dot {
   position: relative;
@@ -382,32 +382,51 @@ a {
   }
 }
 
-.pill {
+/* The one badge: every status, state and tag. Sentence case, one size; the
+   tone means the same thing everywhere (good, warn, bad, info, accent). */
+.badge {
+  --tone: var(--muted);
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 2px 9px 2px 7px;
+  gap: 5px;
+  padding: 1px 8px;
   border-radius: 999px;
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 600;
-  border: 1px solid var(--border);
+  line-height: 1.5;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: nowrap;
+  vertical-align: middle;
+  color: var(--tone);
+  background: color-mix(in srgb, var(--tone) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tone) 32%, transparent);
 }
 
-.pill-up {
-  color: var(--up);
-  background: rgba(52, 211, 153, 0.08);
+.badge-good {
+  --tone: var(--up);
 }
-.pill-degraded {
-  color: var(--degraded);
-  background: rgba(251, 191, 36, 0.08);
+.badge-warn {
+  --tone: var(--degraded);
 }
-.pill-down {
-  color: var(--down);
-  background: rgba(248, 113, 113, 0.08);
+.badge-bad {
+  --tone: var(--down);
 }
-.pill-unknown {
-  color: var(--muted);
+.badge-info {
+  --tone: var(--data);
 }
+.badge-accent {
+  --tone: var(--accent);
+}
+
+.badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+
 
 /* ---------- Machines ------------------------------------------------------ */
 
@@ -452,18 +471,14 @@ a {
 }
 
 .machine-icon {
-  display: grid;
-  place-items: center;
-  width: 38px;
-  height: 38px;
-  border-radius: 10px;
+  display: inline-flex;
+  align-self: flex-start;
+  padding-top: 2px;
   color: var(--accent);
-  background: var(--accent-soft);
-  border: 1px solid rgba(245, 165, 36, 0.25);
 }
 
 .machine h3 {
-  font-size: 16px;
+  font-size: 15px;
 }
 
 .machine .muted.small {
@@ -532,7 +547,7 @@ a {
 }
 
 .machine-rich .machine-top {
-  gap: 12px;
+  gap: 8px;
   margin-bottom: 0;
 }
 
@@ -682,23 +697,8 @@ a {
   font-size: 12px;
 }
 
-.pool-health {
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  padding: 0 5px;
-  border-radius: 4px;
-}
 
-.pool-health.ok {
-  color: var(--up);
-  background: rgba(52, 211, 153, 0.1);
-}
 
-.pool-health.bad {
-  color: var(--down);
-  background: rgba(248, 113, 113, 0.14);
-}
 
 .pool-size {
   text-align: right;
@@ -845,14 +845,16 @@ a {
   gap: 12px;
 }
 
-.edge-head {
+/* The heading every card wears: an accent icon, the title, then muted facts
+   or a badge on the right. Bridge tiles and machine cards follow it too. */
+.card-head {
   display: flex;
   align-items: center;
   gap: 8px;
   color: var(--accent);
 }
 
-.edge-head h3 {
+.card-head h3 {
   font-size: 15px;
   color: var(--text);
   flex: 1;
@@ -1085,29 +1087,7 @@ a {
   cursor: pointer;
 }
 
-.run-badge {
-  display: inline-block;
-  padding: 1px 8px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  text-align: center;
-}
 
-.run-badge-succeeded {
-  color: var(--up);
-  background: rgba(52, 211, 153, 0.1);
-}
-.run-badge-failed {
-  color: var(--down);
-  background: rgba(248, 113, 113, 0.1);
-}
-.run-badge-running {
-  color: var(--data);
-  background: rgba(56, 189, 248, 0.1);
-}
 
 /* ---------- Modal --------------------------------------------------------- */
 
@@ -1536,20 +1516,7 @@ a.tile:hover {
   color: var(--muted);
 }
 
-.badge-soft {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding: 0 6px;
-  border-radius: 999px;
-  border: 1px solid var(--border-strong);
-  font-size: 10.5px;
-}
 
-.badge-warn {
-  color: var(--degraded);
-  border-color: color-mix(in srgb, var(--degraded) 40%, transparent);
-}
 
 .present-btn {
   margin-left: 4px;
@@ -1901,27 +1868,8 @@ a.tile:hover {
   font-size: 12.5px;
 }
 
-.kind-badge {
-  display: inline-block;
-  padding: 0 5px;
-  margin-right: 4px;
-  border-radius: 4px;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  color: var(--muted);
-  border: 1px solid var(--border-strong);
-}
 
-.kind-tv {
-  color: var(--data);
-  border-color: color-mix(in srgb, var(--data) 40%, transparent);
-}
 
-.kind-movie {
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
-}
 
 .user-name {
   color: var(--text);
@@ -2065,19 +2013,6 @@ a.tile:hover {
   --bk-edge: var(--unknown);
 }
 
-.backup-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--bk, var(--muted));
-  background: color-mix(in srgb, var(--bk, var(--muted)) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--bk, var(--muted)) 35%, transparent);
-}
 
 .bk-ok {
   --bk: var(--up);
@@ -3252,26 +3187,19 @@ a.tile:hover {
   padding: 0;
   border: 0;
   background: none;
-  color: var(--muted);
+  color: var(--text);
   font: inherit;
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 600;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
   cursor: pointer;
 }
 
 button.tile-bento-title:hover {
-  color: var(--text);
+  color: var(--accent);
 }
 
 .tile-bento-icon {
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 8px;
-  background: var(--accent-soft);
+  display: inline-flex;
   color: var(--accent);
 }
 
@@ -4354,25 +4282,8 @@ ul.recap-list {
   border-top: 1px solid var(--border);
 }
 
-.danger-badge {
-  padding: 1px 8px;
-  border-radius: 999px;
-  font-size: 10.5px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  border: 1px solid var(--border-strong);
-  color: var(--muted);
-}
 
-.danger-badge.danger-medium {
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
-}
 
-.danger-badge.danger-high {
-  color: var(--down);
-  border-color: rgba(248, 113, 113, 0.5);
-}
 
 .run-dot {
   font-size: 12px;
@@ -4394,6 +4305,13 @@ ul.recap-list {
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
+}
+
+/* In a card, the actions are its footer: last, behind a hairline. */
+.card > .attached {
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
 }
 
 .action-chip {
@@ -4960,19 +4878,6 @@ ul.recap-list {
   flex: none;
 }
 
-.auto-badge {
-  display: inline-block;
-  margin-left: 6px;
-  padding: 0 6px;
-  border-radius: 999px;
-  border: 1px solid rgba(56, 189, 248, 0.4);
-  color: var(--data);
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  vertical-align: 2px;
-}
 
 .discovered-note {
   padding: 8px 10px;
@@ -5206,15 +5111,7 @@ ul.recap-list {
   justify-content: flex-end;
 }
 
-.badge-edited {
-  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
-  color: var(--accent);
-}
 
-.badge-hidden {
-  border-color: var(--border-strong);
-  color: var(--muted);
-}
 
 .row-actions {
   display: inline-flex;
@@ -5320,4 +5217,11 @@ ul.recap-list {
   .tabbar {
     background: rgba(6, 9, 18, 0.98);
   }
+}
+
+.pools-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
 }

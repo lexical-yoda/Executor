@@ -1,8 +1,10 @@
 import { AlertTriangle, Database, HardDrive, Info, Thermometer } from 'lucide-react'
+import type { MouseEvent } from 'react'
 import type { Disk, NasAlert, Pool, TrueNASHealth } from '../api'
 import { ago, bytes, duration } from '../format'
 import { useApp, useClock } from '../state'
 import { Empty, Facts, RowButton, SourceNote } from './ui'
+import { Badge, sentence, STATUS_TONE } from './Badge'
 
 /** How worrying a disk temperature is: hard drives run cooler than SSDs. */
 export function tempTone(disk: Pick<Disk, 'type'>, temp: number | null | undefined): 'up' | 'degraded' | 'down' | 'unknown' {
@@ -61,10 +63,10 @@ function PoolCard({ pool, disks, index }: { pool: Pool; disks: Disk[]; index: nu
       role="button"
       tabIndex={0}
     >
-      <div className="edge-head">
+      <div className="card-head">
         <Database size={16} />
         <h3>{pool.name}</h3>
-        <span className={`backup-pill bk-${BK[tone]}`}>{pool.status.toLowerCase()}</span>
+        <Badge tone={STATUS_TONE[tone]}>{sentence(pool.status)}</Badge>
       </div>
       <div className="backup-main">
         <span className="backup-big num">{pool.pct != null ? `${Math.round(pool.pct)}%` : '—'}</span>
@@ -123,7 +125,7 @@ export function Storage({ health }: { health: TrueNASHealth }) {
   const loose = disks.filter((d) => !d.pool)
   const alerts = health.alerts ?? []
   return (
-    <section className="section">
+    <section className="section" id="storage">
       <div className="section-head">
         <h2>Storage</h2>
         {health.system && (
@@ -143,7 +145,7 @@ export function Storage({ health }: { health: TrueNASHealth }) {
             <PoolCard key={p.name} pool={p} disks={disks.filter((d) => d.pool === p.name)} index={i} />
           ))}
           <article className="backup-card card storage-side" style={{ ['--i' as string]: health.pools.length }}>
-            <div className="edge-head">
+            <div className="card-head">
               <HardDrive size={16} />
               <h3>
                 <RowButton onClick={() => open('nas')}>TrueNAS</RowButton>
@@ -207,7 +209,7 @@ export function PoolDrawer({ name }: { name: string }) {
   return (
     <div>
       <div className="drawer-kicker">
-        <Database size={14} /> Pool <span className={`backup-pill bk-${BK[tone]}`}>{pool.status.toLowerCase()}</span>
+        <Database size={14} /> Pool <Badge tone={STATUS_TONE[tone]}>{sentence(pool.status)}</Badge>
       </div>
       <h3 className="drawer-title">{pool.name}</h3>
       {pool.detail && <p className="small warn-text">{pool.detail}</p>}
@@ -275,7 +277,8 @@ export function DiskDrawer({ name }: { name: string }) {
   return (
     <div>
       <div className="drawer-kicker">
-        <Thermometer size={14} /> Disk <span className={`backup-pill bk-${BK[tone]}`}>{disk.temp != null ? `${Math.round(disk.temp)} °C` : 'no reading'}</span>
+        <Thermometer size={14} /> Disk{' '}
+        <Badge tone={STATUS_TONE[tone]}>{disk.temp != null ? `${Math.round(disk.temp)} °C` : 'No reading'}</Badge>
       </div>
       <h3 className="drawer-title mono">{disk.name}</h3>
       <TempRange disk={disk} />
@@ -358,5 +361,22 @@ export function NasDrawer() {
       )}
       <SourceNote source="TrueNAS API (read-only key)" at={health.checked_at} />
     </div>
+  )
+}
+
+/** One line for a machine card or drawer: the pools at a glance, pointing to
+ *  the Storage section, which is the only place their details live. */
+export function PoolsSummary({ pools }: { pools: Pool[] }) {
+  const healthy = pools.filter((p) => poolTone(p) === 'up').length
+  const fullest = [...pools].sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0))[0]
+  const go = (e: MouseEvent) => {
+    e.stopPropagation()
+    document.getElementById('storage')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+  return (
+    <button type="button" className="link-btn small pools-summary" onClick={go}>
+      <Database size={12} /> {healthy === pools.length ? `${pools.length} pools healthy` : `${pools.length - healthy} of ${pools.length} pools need a look`}
+      {fullest?.pct != null && ` · ${fullest.name} ${Math.round(fullest.pct)}% full`} ›
+    </button>
   )
 }

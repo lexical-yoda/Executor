@@ -17,6 +17,7 @@ import { type ActionInfo, api, type RunDetail, type RunSummary, type StepStatus,
 import { ago, requester } from '../format'
 import { useNow } from '../hooks'
 import { useActions, useApp, useClock } from '../state'
+import { Badge, sentence, type Tone } from './Badge'
 import { Empty } from './ui'
 
 const HOLD_MS: Record<ActionInfo['danger'], number> = { low: 700, medium: 1400, high: 2600 }
@@ -190,8 +191,17 @@ function ActiveStreams() {
   )
 }
 
+const DANGER_TONE: Record<ActionInfo['danger'], Tone> = { low: 'neutral', medium: 'accent', high: 'bad' }
+
 export function DangerBadge({ danger }: { danger: ActionInfo['danger'] }) {
-  return <span className={`danger-badge danger-${danger}`}>{DANGER_LABEL[danger]}</span>
+  return <Badge tone={DANGER_TONE[danger]}>{DANGER_LABEL[danger]}</Badge>
+}
+
+const RUN_TONE: Record<string, Tone> = { succeeded: 'good', failed: 'bad', running: 'info' }
+
+/** A run's outcome: Succeeded, Failed or Running. */
+export function RunBadge({ status }: { status: string }) {
+  return <Badge tone={RUN_TONE[status] ?? 'neutral'}>{sentence(status)}</Badge>
 }
 
 /** The pre-launch briefing and the hold-to-launch button. */
@@ -249,7 +259,7 @@ export function ActionDrawer({ id }: { id: string }) {
             {history.map((r) => (
               <li key={r.id}>
                 <button type="button" className="row-btn" onClick={() => open('run', r.id)}>
-                  <span className={`run-badge run-badge-${r.status}`}>{r.status}</span>
+                  <RunBadge status={r.status} />
                   <span className="muted small">{ago(r.started_at, now)}</span>
                   <span className="muted small num">{clock(seconds(r.started_at, r.finished_at, now))}</span>
                 </button>
@@ -339,7 +349,7 @@ export function RunDrawer({ id }: { id: string }) {
     <div className={`run-view run-${run.status}`}>
       <div className="drawer-kicker">
         <TerminalSquare size={14} /> Run · {ago(run.started_at, now)}
-        <span className={`run-badge run-badge-${run.status}`}>{run.status}</span>
+        <RunBadge status={run.status} />
       </div>
       <h3 className="drawer-title">{run.title}</h3>
       <div className="run-meter">
@@ -385,15 +395,16 @@ export function RunDrawer({ id }: { id: string }) {
   )
 }
 
-/** Small launch chips for the actions tied to a machine, service or panel. */
-export function AttachedActions({ target, label = true }: { target: string; label?: boolean }) {
+/** The actions tied to a machine, service or panel: one labelled row of
+ *  launch chips, the footer of a card (or a row in a drawer). */
+export function AttachedActions({ target }: { target: string }) {
   const { attachedTo } = useActions()
   const { open } = useApp()
   const list = attachedTo(target)
   if (!list.length) return null
   return (
     <div className="attached">
-      {label && <span className="small muted">Actions</span>}
+      <span className="small muted">Actions</span>
       {list.map((a) => (
         <button
           key={a.id}

@@ -7,11 +7,13 @@ import { AttachedActions } from './ActionKit'
 import { containerTone } from './Services'
 import { StatusPill } from './StatusDot'
 import { Empty, Facts, SourceNote } from './ui'
+import { Badge } from './Badge'
+import { RangePicker } from './RangePicker'
 
 const SPANS = [
-  { hours: 24, label: '24h' },
-  { hours: 168, label: '7d' },
-  { hours: 720, label: '30d' },
+  { value: 24, label: '24h' },
+  { value: 168, label: '7d' },
+  { value: 720, label: '30d' },
 ]
 
 /** Uptime as a strip of bars, one per bucket, coloured by the worst result in it. */
@@ -158,7 +160,7 @@ export function ServiceDrawer({ id }: { id: string }) {
               <li key={c.name} className={`chip-row chip-${containerTone(c)}`}>
                 <span className="chip-dot" />
                 <span className="mono">{c.name}</span>
-                {i === 0 && <span className="badge-soft">primary</span>}
+                {i === 0 && <Badge>Primary</Badge>}
                 <span className="small muted">{c.status}</span>
               </li>
             ))}
@@ -173,20 +175,7 @@ export function ServiceDrawer({ id }: { id: string }) {
               Uptime
               {history?.uptime != null && <span className="uptime-pct num"> {history.uptime.toFixed(2)}%</span>}
             </h4>
-            <div className="range-tabs" role="tablist">
-              {SPANS.map((s) => (
-                <button
-                  key={s.hours}
-                  type="button"
-                  role="tab"
-                  aria-selected={hours === s.hours}
-                  className={hours === s.hours ? 'active' : ''}
-                  onClick={() => setHours(s.hours)}
-                >
-                  {s.label}
-                </button>
-              ))}
-            </div>
+            <RangePicker options={SPANS} value={hours} onChange={setHours} label="Uptime" />
           </div>
           {error && <p className="error small">{error}</p>}
           {!history && !error && <Loader2 size={14} className="spin" />}

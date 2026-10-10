@@ -5,6 +5,7 @@ import { ago, bytes } from '../format'
 import { useApp, useClock } from '../state'
 import { day, signed, SizeChart } from './Backups'
 import { Empty, Facts, Num, RowButton, SourceNote } from './ui'
+import { AttachedActions } from './ActionKit'
 
 function plural(n: number | null | undefined, word: string): string | null {
   if (n == null) return null
@@ -74,7 +75,7 @@ export function LibraryCard({ library }: { library: Library }) {
   const t = library.totals
   return (
     <article className="edge-card card media-card library-card">
-      <div className="edge-head">
+      <div className="card-head">
         <LibraryIcon size={16} />
         <h3>Library</h3>
         {t.bytes != null && <span className="small muted num">{bytes(t.bytes)}</span>}
@@ -118,6 +119,7 @@ export function LibraryCard({ library }: { library: Library }) {
           )}
         </>
       )}
+      <AttachedActions target="library" />
     </article>
   )
 }
@@ -214,6 +216,7 @@ export function LibraryDrawer() {
       ) : (
         <Empty>Nothing added yet.</Empty>
       )}
+      <AttachedActions target="library" />
       <SourceNote source="Jellyfin (counts and recent additions) and the runner (folder sizes)" at={library.checked_at} />
     </div>
   )

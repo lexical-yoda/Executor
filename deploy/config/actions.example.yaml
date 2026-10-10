@@ -60,7 +60,8 @@ actions:
     danger: medium            # low | medium | high: how long the launch button must be held
     group: Downloads          # heading in the Armory deck
     # Also offered on these cards: machine or service ids, or the panels
-    # downloads, requests, now-playing, backups, edge and backup-<Duplicati job id>.
+    # downloads, requests, now-playing, library, dns, backups, edge and
+    # backup-<Duplicati job id>.
     attach: [downloads, sonarr, radarr]
     steps:
       - name: Stop the stack

@@ -3,6 +3,7 @@ import { type KeyboardEvent, useCallback, useEffect, useMemo, useState } from 'r
 import { api, type PlacementChanges, type SettingsService } from '../api'
 import { StatusDot } from '../components/StatusDot'
 import { useApp } from '../state'
+import { Badge } from '../components/Badge'
 
 type Filter = 'all' | 'edited' | 'hidden' | 'discovered'
 
@@ -356,9 +357,9 @@ export function Settings() {
                       onSave={(v) => change([s.id], { url: v || null }, v ? `Link set for ${s.name}` : `${s.name} uses its default link`)}
                     />
                     <span className="row-badges">
-                      {s.discovered && <span className="auto-badge">auto</span>}
-                      {s.override && <span className="auto-badge badge-edited">edited</span>}
-                      {s.hidden && <span className="auto-badge badge-hidden">hidden</span>}
+                      {s.discovered && <Badge tone="info">Auto</Badge>}
+                      {s.override && <Badge tone="accent">Edited</Badge>}
+                      {s.hidden && <Badge>Hidden</Badge>}
                     </span>
                     <span className="row-actions">
                       <button

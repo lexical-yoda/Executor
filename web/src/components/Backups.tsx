@@ -10,6 +10,7 @@ import type {
 import { ago, bytes, duration, until } from '../format'
 import { useApp, useClock } from '../state'
 import { AttachedActions } from './ActionKit'
+import { Badge, type Tone } from './Badge'
 import { Empty, Facts, Num, SourceNote } from './ui'
 
 export const LABEL: Record<BackupStatus, string> = {
@@ -22,12 +23,22 @@ export const LABEL: Record<BackupStatus, string> = {
   unknown: 'Unknown',
 }
 
+const TONE: Record<BackupStatus, Tone> = {
+  ok: 'good',
+  warning: 'warn',
+  failed: 'bad',
+  stale: 'warn',
+  running: 'info',
+  missing: 'warn',
+  unknown: 'neutral',
+}
+
 export function BackupPill({ status }: { status: BackupStatus }) {
   return (
-    <span className={`backup-pill bk-${status}`}>
+    <Badge tone={TONE[status]}>
       {status === 'running' && <Loader2 size={11} className="spin" />}
       {LABEL[status]}
-    </span>
+    </Badge>
   )
 }
 
@@ -78,7 +89,7 @@ function JobCard({ job, now, index }: { job: DuplicatiJob; now: number; index: n
       role="button"
       tabIndex={0}
     >
-      <div className="edge-head">
+      <div className="card-head">
         <Archive size={16} />
         <h3>{job.name}</h3>
         <BackupPill status={job.status} />
@@ -125,7 +136,7 @@ function JobCard({ job, now, index }: { job: DuplicatiJob; now: number; index: n
         )}
       </div>
       {job.last_error && <p className="small warn-text">{job.last_error}</p>}
-      <AttachedActions target={`backup-${job.id}`} label={false} />
+      <AttachedActions target={`backup-${job.id}`} />
     </article>
   )
 }
@@ -141,7 +152,7 @@ function FileCard({ item, now, index }: { item: FileBackupStatus; now: number; i
       role="button"
       tabIndex={0}
     >
-      <div className="edge-head">
+      <div className="card-head">
         {single ? <FileArchive size={16} /> : <Database size={16} />}
         <h3>{item.name}</h3>
         <BackupPill status={item.status} />
@@ -244,7 +255,7 @@ function StorageCard({ item, now, index }: { item: StorageStatus; now: number; i
       role="button"
       tabIndex={0}
     >
-      <div className="edge-head">
+      <div className="card-head">
         <CloudUpload size={16} />
         <h3>{item.name}</h3>
         <span className="small muted mono">{item.bucket}</span>

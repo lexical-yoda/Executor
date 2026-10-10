@@ -82,7 +82,7 @@ function BandwidthCard({ bw, error, now }: { bw: Bandwidth | null; error: string
   if (!bw) {
     return (
       <article className="edge-card card">
-        <div className="edge-head">
+        <div className="card-head">
           <Globe size={16} /> <h3>VPS bandwidth</h3>
         </div>
         <p className="small muted">{error ? `Unavailable: ${error}` : 'Waiting for data…'}</p>
@@ -96,7 +96,7 @@ function BandwidthCard({ bw, error, now }: { bw: Bandwidth | null; error: string
   const fetchedMs = bw.fetched_at ? bw.fetched_at * 1000 : null
   return (
     <article className="edge-card card clickable" onClick={() => open('bandwidth', '')} role="button" tabIndex={0}>
-      <div className="edge-head">
+      <div className="card-head">
         <Globe size={16} />
         <h3>VPS bandwidth</h3>
         <span className="small muted">{bw.instance?.label ?? ''}</span>
@@ -158,6 +158,7 @@ function BandwidthCard({ bw, error, now }: { bw: Bandwidth | null; error: string
             .join(', ')}
         </p>
       )}
+      <AttachedActions target="edge" />
     </article>
   )
 }
@@ -166,7 +167,7 @@ function CertificateCard({ certs }: { certs: Certificate[] }) {
   const { open } = useApp()
   return (
     <article className="edge-card card">
-      <div className="edge-head">
+      <div className="card-head">
         <ShieldCheck size={16} />
         <h3>TLS certificates</h3>
       </div>
@@ -211,7 +212,6 @@ export function Edge({ edge }: { edge: EdgeData }) {
           <ShieldsCard traffic={edge.traffic} />
         </div>
       )}
-      <AttachedActions target="edge" />
     </section>
   )
 }

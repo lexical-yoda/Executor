@@ -420,8 +420,9 @@ by `danger` (low, medium, high), and letting go early cancels. The run then
 shows as a pipeline whose steps light up as they go, with their times and the
 output. `group` sets the action's heading in the Armory, and `attach` also
 offers it on the cards it concerns (machine or service ids, or the panels
-`downloads`, `requests`, `now-playing`, `backups`, `edge` and
-`backup-<Duplicati job id>`).
+`downloads`, `requests`, `now-playing`, `library`, `dns`, `backups`, `edge`
+and `backup-<Duplicati job id>`), as one row of actions at the foot of each
+card.
 
 An action with `show_streams: true` lists the media server's active streams
 in its briefing, so you can see who would be interrupted. This needs the

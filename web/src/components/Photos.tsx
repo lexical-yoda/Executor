@@ -5,6 +5,8 @@ import { bytes, pct } from '../format'
 import { useApp } from '../state'
 import { day, signed, SizeChart } from './Backups'
 import { Empty, Facts, Num, RowButton, SourceNote } from './ui'
+import { Badge } from './Badge'
+import { RangePicker } from './RangePicker'
 
 const DAY = 86_400_000
 
@@ -30,12 +32,12 @@ function JobsPill({ lib }: { lib: PhotoLibrary }) {
   if (lib.backlog == null) return null
   if (lib.backlog > 0)
     return (
-      <span className="backup-pill bk-running">
+      <Badge tone="info">
         <Hourglass size={11} />
         Processing {lib.backlog.toLocaleString()}
-      </span>
+      </Badge>
     )
-  return <span className="backup-pill bk-ok">Idle</span>
+  return <Badge tone="good">Idle</Badge>
 }
 
 /** Photos against videos, by the space they take. */
@@ -115,7 +117,7 @@ export function PhotoLibrarySection({ photos }: { photos: Photos }) {
           role="button"
           tabIndex={0}
         >
-          <div className="edge-head">
+          <div className="card-head">
             <Images size={16} />
             <h3>Immich</h3>
             <JobsPill lib={lib} />
@@ -344,20 +346,15 @@ export function PhotosDrawer() {
 
           <div className="drawer-row">
             <h4 className="drawer-sub">Activity</h4>
-            <div className="range-tabs" role="tablist">
-              {(['upload', 'taken'] as const).map((k) => (
-                <button
-                  key={k}
-                  type="button"
-                  role="tab"
-                  aria-selected={kind === k}
-                  className={kind === k ? 'active' : ''}
-                  onClick={() => (setKind(k), setPicked(null))}
-                >
-                  {k === 'upload' ? 'Added' : 'Taken'}
-                </button>
-              ))}
-            </div>
+            <RangePicker
+              options={[
+                { value: 'upload', label: 'Added' },
+                { value: 'taken', label: 'Taken' },
+              ]}
+              value={kind}
+              onChange={(k) => (setKind(k), setPicked(null))}
+              label="Activity"
+            />
           </div>
           {error && <p className="small warn-text">{error}</p>}
           {!history && !error && <Loader2 size={14} className="spin" />}

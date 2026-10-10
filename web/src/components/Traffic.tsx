@@ -5,6 +5,7 @@ import { nodeStatuses } from '../decks/Bridge'
 import { bytes } from '../format'
 import { useApp } from '../state'
 import { Empty, Facts, Num, RowButton, SourceNote } from './ui'
+import { RangePicker } from './RangePicker'
 
 const MapView = lazy(() => import('../map/MapView'))
 
@@ -75,17 +76,11 @@ function StackedBars({ rows, parts, labels }: { rows: number[][]; parts: string[
   )
 }
 
-function RangeTabs({ value, options, onChange }: { value: string; options: string[]; onChange: (v: string) => void }) {
-  return (
-    <div className="range-tabs" role="tablist">
-      {options.map((o) => (
-        <button key={o} type="button" role="tab" aria-selected={value === o} className={value === o ? 'active' : ''} onClick={() => onChange(o)}>
-          {o}
-        </button>
-      ))}
-    </div>
-  )
-}
+const SITE_RANGES = [
+  { value: '24h', label: '24h' },
+  { value: '7d', label: '7d' },
+  { value: '30d', label: '30d' },
+]
 
 function SiteRow({ site }: { site: SiteTraffic }) {
   const { open } = useApp()
@@ -111,7 +106,7 @@ export function TrafficCard({ traffic }: { traffic: Traffic }) {
   const quiet = (traffic.sites ?? []).length - sites.length
   return (
     <article className="edge-card card traffic-card">
-      <div className="edge-head">
+      <div className="card-head">
         <Globe2 size={16} />
         <h3>Public sites</h3>
         <span className="small muted">last 24 h</span>
@@ -157,7 +152,7 @@ export function ShieldsCard({ traffic }: { traffic: Traffic }) {
       role="button"
       tabIndex={0}
     >
-      <div className="edge-head">
+      <div className="card-head">
         <ShieldAlert size={16} />
         <h3>Shields</h3>
         <span className="small muted">last 24 h</span>
@@ -229,7 +224,7 @@ export function SiteDrawer({ site }: { site: string }) {
       </div>
       <div className="drawer-row">
         <h3 className="drawer-title mono">{site}</h3>
-        <RangeTabs value={range} options={['24h', '7d', '30d']} onChange={setRange} />
+        <RangePicker value={range} options={SITE_RANGES} onChange={setRange} label="Range" />
       </div>
       {error && <p className="small warn-text">{error}</p>}
       {!data && !error && <Loader2 size={14} className="spin" />}
@@ -294,7 +289,7 @@ export function ThreatsDrawer() {
       </div>
       <div className="drawer-row">
         <h3 className="drawer-title">Attacks on the edge server</h3>
-        <RangeTabs value={range} options={['24h', '7d']} onChange={setRange} />
+        <RangePicker value={range} options={SITE_RANGES.slice(0, 2)} onChange={setRange} label="Range" />
       </div>
       {error && <p className="small warn-text">{error}</p>}
       {!data && !error && <Loader2 size={14} className="spin" />}

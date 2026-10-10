@@ -2,7 +2,7 @@ import { Loader2 } from 'lucide-react'
 import type { ActionInfo } from '../api'
 import { ago, requester } from '../format'
 import { useActions, useApp, useClock } from '../state'
-import { ActionCard, runClock, runSeconds } from '../components/ActionKit'
+import { ActionCard, RunBadge, runClock, runSeconds } from '../components/ActionKit'
 import { DeckSection, Empty, RowButton } from '../components/ui'
 
 export function Armory() {
@@ -46,7 +46,7 @@ export function Armory() {
             {runs.slice(0, 20).map((r) => (
               <li key={r.id}>
                 <RowButton onClick={() => open('run', r.id)}>
-                  <span className={`run-badge run-badge-${r.status}`}>{r.status}</span>
+                  <RunBadge status={r.status} />
                   <span className="run-list-title">{r.title}</span>
                   <span className="small muted">
                     {ago(r.started_at, now)} · {runClock(runSeconds(r.started_at, r.finished_at, now))} ·{' '}

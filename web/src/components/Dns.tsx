@@ -4,6 +4,8 @@ import type { PiHoleStatus } from '../api'
 import { ago, duration } from '../format'
 import { useApp, useClock } from '../state'
 import { Empty, Facts, Num, SourceNote } from './ui'
+import { Badge } from './Badge'
+import { AttachedActions } from './ActionKit'
 
 const n = (v: number | null | undefined) => (v == null ? '—' : v.toLocaleString())
 
@@ -43,9 +45,9 @@ function BlockingPill({ dns }: { dns: PiHoleStatus }) {
   if (!dns.blocking) return null
   const on = dns.blocking === 'enabled'
   return (
-    <span className={`backup-pill bk-${on ? 'ok' : 'warning'}`}>
+    <Badge tone={on ? 'good' : 'warn'}>
       {on ? 'Blocking' : dns.blocking_timer ? `Off for ${duration(dns.blocking_timer)}` : 'Not blocking'}
-    </span>
+    </Badge>
   )
 }
 
@@ -73,7 +75,7 @@ export function DnsCard({ dns }: { dns: PiHoleStatus }) {
           role="button"
           tabIndex={0}
         >
-          <div className="edge-head">
+          <div className="card-head">
             {dns.blocking === 'enabled' ? <ShieldBan size={16} /> : <ShieldOff size={16} />}
             <h3>Pi-hole</h3>
             <BlockingPill dns={dns} />
@@ -112,6 +114,7 @@ export function DnsCard({ dns }: { dns: PiHoleStatus }) {
             </div>
             <QueryBars history={dns.history ?? []} />
           </div>
+          <AttachedActions target="dns" />
         </article>
       )}
     </section>
@@ -177,6 +180,7 @@ export function DnsDrawer() {
           </ol>
         </>
       )}
+      <AttachedActions target="dns" />
       <SourceNote source="Pi-hole API (app password)" at={dns.checked_at} />
     </div>
   )

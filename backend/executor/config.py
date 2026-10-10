@@ -436,7 +436,8 @@ class Action(BaseModel):
     # Heading the action is listed under, usually the machine or stack it acts on.
     group: str | None = None
     # Where else the page offers the action: machine or service ids, or the
-    # panels "downloads", "requests", "now-playing", "backups" and "edge".
+    # panels "downloads", "requests", "now-playing", "library", "dns", "backups"
+    # and "edge". Each shows as one row of actions at the foot of its card.
     attach: list[Slug] = []
     steps: list[Step] = Field(min_length=1)
 

@@ -1,5 +1,6 @@
 import type { Status } from '../api'
 import { statusLabel } from '../format'
+import { Badge, STATUS_TONE } from './Badge'
 
 export function StatusDot({ status, size = 10, label }: { status: Status; size?: number; label?: string }) {
   return (
@@ -14,9 +15,8 @@ export function StatusDot({ status, size = 10, label }: { status: Status; size?:
 
 export function StatusPill({ status, label }: { status: Status; label?: string }) {
   return (
-    <span className={`pill pill-${status}`}>
-      <StatusDot status={status} size={7} label={label} />
+    <Badge tone={STATUS_TONE[status]} dot>
       {label ?? statusLabel[status]}
-    </span>
+    </Badge>
   )
 }

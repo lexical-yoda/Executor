@@ -5,6 +5,7 @@ import { bytes } from '../format'
 import { useApp } from '../state'
 import { signed } from './Backups'
 import { Empty, Num, RowButton, SourceNote } from './ui'
+import { days as dayOptions, RangePicker } from './RangePicker'
 
 export function useRecap(days = 7) {
   const [data, setData] = useState<RecapData | null>(null)
@@ -128,13 +129,7 @@ export function RecapDrawer() {
       </div>
       <div className="drawer-row">
         <h3 className="drawer-title">The last {days === 7 ? 'week' : `${days} days`}</h3>
-        <div className="range-tabs" role="tablist">
-          {[7, 30].map((d) => (
-            <button key={d} type="button" role="tab" aria-selected={days === d} className={days === d ? 'active' : ''} onClick={() => setDays(d)}>
-              {d}d
-            </button>
-          ))}
-        </div>
+        <RangePicker options={dayOptions(7, 30)} value={days} onChange={setDays} label="Days" />
       </div>
       {error && <p className="error small">{error}</p>}
       {!data && !error && <Loader2 size={14} className="spin" />}

@@ -8,6 +8,7 @@ import { LibraryCard } from '../components/Library'
 import { DownloadsCard, NowPlayingCard, placeName, RequestsCard } from '../components/Media'
 import { Empty, RowButton } from '../components/ui'
 import { nodeStatuses } from './Bridge'
+import { days as dayOptions, RangePicker } from '../components/RangePicker'
 
 const MapView = lazy(() => import('../map/MapView'))
 const RANGES = [7, 30, 90] as const
@@ -190,23 +191,18 @@ export function Holonet({ tour }: { tour: boolean }) {
               overlay={
                 <>
                   <div className="explorer-controls">
-                    <div className="range-tabs" role="tablist" aria-label="Map view">
-                      <button type="button" role="tab" aria-selected={mode === 'live'} className={mode === 'live' ? 'active' : ''} onClick={() => setMode('live')}>
-                        Live
-                      </button>
-                      <button type="button" role="tab" aria-selected={mode === 'all'} className={mode === 'all' ? 'active' : ''} onClick={() => setMode('all')}>
-                        All places
-                      </button>
-                    </div>
+                    <RangePicker
+                      options={[
+                        { value: 'live', label: 'Live' },
+                        { value: 'all', label: 'All places' },
+                      ]}
+                      value={mode}
+                      onChange={setMode}
+                      label="Map view"
+                    />
                     {history && (
                       <>
-                        <div className="range-tabs" role="tablist" aria-label="Days">
-                          {RANGES.map((r) => (
-                            <button key={r} type="button" role="tab" aria-selected={days === r} className={days === r ? 'active' : ''} onClick={() => setDays(r)}>
-                              {r}d
-                            </button>
-                          ))}
-                        </div>
+                        <RangePicker options={dayOptions(...RANGES)} value={days} onChange={setDays} label="Days" />
                         <UserPicker
                           users={users.data?.users ?? []}
                           selected={user}
@@ -306,7 +302,7 @@ export function Holonet({ tour }: { tour: boolean }) {
         {s.library && <LibraryCard library={s.library} />}
         {history && (
           <article className="edge-card card media-card">
-            <div className="edge-head">
+            <div className="card-head">
               <MapPin size={16} />
               <h3>Top places</h3>
               <span className="small muted">last {days} days</span>
@@ -333,7 +329,7 @@ export function Holonet({ tour }: { tour: boolean }) {
         )}
         {history && (
           <article className="edge-card card media-card">
-            <div className="edge-head">
+            <div className="card-head">
               <Users size={16} />
               <h3>Viewers</h3>
               <span className="small muted">last 90 days</span>

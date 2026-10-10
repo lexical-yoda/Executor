@@ -21,6 +21,8 @@ import { useApp, useClock } from '../state'
 import { AttachedActions } from './ActionKit'
 import { Sparkline } from './Sparkline'
 import { StatusDot, StatusPill } from './StatusDot'
+import { PoolsSummary } from './Storage'
+import { Badge, sentence } from './Badge'
 import { Num } from './ui'
 
 export const ICONS: Record<MachineIcon, typeof Server> = {
@@ -69,6 +71,10 @@ function Chip({ icon: Icon, children, title }: { icon: typeof Server; children: 
 }
 
 function Storage({ stats }: { stats: MachineStats }) {
+  const { snapshot } = useApp()
+  const nas = snapshot?.truenas
+  // With the TrueNAS integration, pools have their own section: point there.
+  if (stats.pools.length && nas?.ok && nas.pools.length) return <PoolsSummary pools={nas.pools} />
   if (stats.pools.length) {
     return (
       <div className="pools">
@@ -76,7 +82,7 @@ function Storage({ stats }: { stats: MachineStats }) {
           <div key={p.name} className="pool">
             <div className="pool-head">
               <span className="pool-name">{p.name}</span>
-              <span className={`pool-health ${p.health === 'ONLINE' ? 'ok' : 'bad'}`}>{p.health ?? '?'}</span>
+              <Badge tone={p.health === 'ONLINE' ? 'good' : 'bad'}>{sentence(p.health ?? 'unknown')}</Badge>
               <span className="small muted num pool-size">
                 {gib(p.used_gib)} / {gib(p.total_gib)}
               </span>
@@ -115,6 +121,7 @@ function RichCard({
   index: number
   onOpen: () => void
 }) {
+  const { snapshot } = useApp()
   const Icon = ICONS[machine.icon] ?? Server
   const s = machine.stats
   const gpu = s?.gpus[0]
@@ -131,7 +138,7 @@ function RichCard({
     >
       <div className="machine-top">
         <div className="machine-icon">
-          <Icon size={20} strokeWidth={1.6} />
+          <Icon size={16} />
         </div>
         <div className="machine-title">
           <h3>{machine.name}</h3>
@@ -213,7 +220,7 @@ function RichCard({
                 GPU {Math.round(s.gpu_temp)}°
               </Chip>
             )}
-            {s.drive_temp_max != null && (
+            {s.drive_temp_max != null && !snapshot?.truenas?.ok && (
               <Chip icon={HardDrive} title="Hottest drive">
                 Drives {Math.round(s.drive_temp_max)}°
               </Chip>
@@ -237,7 +244,7 @@ function RichCard({
 
         </>
       )}
-      <AttachedActions target={machine.id} label={false} />
+      <AttachedActions target={machine.id} />
     </article>
   )
 }
@@ -276,7 +283,7 @@ function LocalCard({ machine, index, onOpen }: { machine: MachineStatus; index: 
     >
       <div className="machine-top">
         <div className="machine-icon">
-          <Icon size={20} strokeWidth={1.6} />
+          <Icon size={16} />
         </div>
         <div className="machine-title">
           <h3>{machine.name}</h3>

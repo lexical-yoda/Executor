@@ -6,6 +6,7 @@ import { streamKey } from '../map/types'
 import { useApp, useClock } from '../state'
 import { AttachedActions } from './ActionKit'
 import { Empty, Num } from './ui'
+import { Badge } from './Badge'
 
 export function placeName(p: Partial<Place> | null | undefined): string {
   if (!p || p.lat == null) return 'Unknown location'
@@ -52,9 +53,9 @@ function RequestRow({ item, now, compact }: { item: MediaRequest; now: number; c
             {item.year && <span className="muted"> ({item.year})</span>}
           </span>
           <span className="small muted">
-            <span className={`kind-badge kind-${item.kind}`}>{item.kind === 'tv' ? 'TV' : 'Movie'}</span>
+            <Badge tone={item.kind === 'tv' ? 'info' : 'accent'}>{item.kind === 'tv' ? 'TV' : 'Movie'}</Badge>
             {item.seasons.length > 0 && <span className="num"> {seasons(item.seasons)}</span>}
-            {item.is_4k && <span className="kind-badge">4K</span>} <span className="user-name">{item.requested_by}</span>
+            {item.is_4k && <Badge>4K</Badge>} <span className="user-name">{item.requested_by}</span>
             {item.requested_at && ` · ${ago(item.requested_at, now)}`}
           </span>
         </span>
@@ -68,7 +69,7 @@ export function RequestsCard({ data }: { data: MediaData['requests'] }) {
   const c = data.counts
   return (
     <article className="edge-card card media-card">
-      <div className="edge-head">
+      <div className="card-head">
         <Inbox size={16} />
         <h3>Requests</h3>
       </div>
@@ -150,7 +151,7 @@ export function DownloadsCard({ data }: { data: MediaData['downloads'] }) {
   const moving = (t.down_bps ?? 0) > 0
   return (
     <article className="edge-card card media-card">
-      <div className="edge-head">
+      <div className="card-head">
         <Download size={16} />
         <h3>Downloads</h3>
         {t.configured && t.ok && (
@@ -237,11 +238,11 @@ function StreamRow({ s }: { s: Watching }) {
               )}
             </span>
             {s.paused && (
-              <span className="badge-soft">
-                <Pause size={10} /> paused
-              </span>
+              <Badge>
+                <Pause size={10} /> Paused
+              </Badge>
             )}
-            {s.transcoding && <span className="badge-soft badge-warn">transcoding</span>}
+            {s.transcoding && <Badge tone="warn">Transcoding</Badge>}
             {pct !== null && (
               <span className="num">
                 {pct}%{left ? ` · ${duration(left)} left` : ''}
@@ -259,7 +260,7 @@ export function NowPlayingCard({ data, limit }: { data: JellyfinStatus; limit?: 
   const shown = limit ? data.watching.slice(0, limit) : data.watching
   return (
     <article className="edge-card card media-card now-playing">
-      <div className="edge-head">
+      <div className="card-head">
         <Radio size={16} className={n ? 'pulse-icon' : ''} />
         <h3>Now playing</h3>
         <span className="small muted">{n ? `${n} ${n === 1 ? 'stream' : 'streams'}` : ''}</span>

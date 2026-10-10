@@ -4,6 +4,7 @@ import type { ContainerState, ServiceStatus } from '../api'
 import { latency } from '../format'
 import { useApp } from '../state'
 import { StatusDot } from './StatusDot'
+import { Badge } from './Badge'
 
 const GROUP_ICONS: Record<string, typeof Film> = {
   Media: Film,
@@ -48,9 +49,9 @@ function Tile({ service, index }: { service: ServiceStatus; index: number }) {
           <h3>
             {service.name}
             {service.discovered && (
-              <span className="auto-badge" title="Found from Docker; not in config.yaml">
-                auto
-              </span>
+              <Badge tone="info" title="Found from Docker; not in config.yaml">
+                Auto
+              </Badge>
             )}
           </h3>
           <span className="small muted">

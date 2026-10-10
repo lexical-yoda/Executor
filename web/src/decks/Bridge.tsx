@@ -85,7 +85,7 @@ function EngineeringTile({ s }: { s: Snapshot }) {
     <Tile
       title="Engineering"
       subtitle={`${s.summary.machines_up}/${s.summary.machines_total} machines online`}
-      icon={<Cpu size={15} />}
+      icon={<Cpu size={16} />}
       onOpen={() => showDeck('engineering')}
       tone={down.some((x) => x.status === 'down') ? 'down' : down.length ? 'degraded' : 'up'}
       className="tile-engineering"
@@ -156,7 +156,7 @@ function HolonetTile({ s }: { s: Snapshot }) {
     <Tile
       title="Holonet"
       subtitle="requests and downloads"
-      icon={<Radio size={15} />}
+      icon={<Radio size={16} />}
       onOpen={() => showDeck('holonet')}
       className="tile-holonet"
     >
@@ -229,7 +229,7 @@ function ArchivesTile({ s }: { s: Snapshot }) {
     <Tile
       title="Archives"
       subtitle={b && lib ? 'backups and photos' : b ? 'backups' : 'photos'}
-      icon={<Archive size={15} />}
+      icon={<Archive size={16} />}
       onOpen={() => showDeck('archives')}
       tone={tone}
       className="tile-archives"
@@ -287,7 +287,7 @@ function ArmoryTile() {
   ].slice(0, 4)
   const last = runs[0]
   return (
-    <Tile title="Armory" subtitle={`${actions?.length ?? 0} actions ready`} icon={<Zap size={15} />} onOpen={() => showDeck('armory')} className="tile-armory">
+    <Tile title="Armory" subtitle={`${actions?.length ?? 0} actions ready`} icon={<Zap size={16} />} onOpen={() => showDeck('armory')} className="tile-armory">
       {running ? (
         <RowButton className="armory-running" onClick={() => open('run', running.id)}>
           <span className="small">Running</span>
@@ -318,7 +318,7 @@ function FeedTile() {
   const { open } = useApp()
   const { events, error } = useEvents()
   return (
-    <Tile title="Ship's log" icon={<ScrollText size={15} />} onOpen={() => open('feed')} className="tile-feed">
+    <Tile title="Ship's log" icon={<ScrollText size={16} />} onOpen={() => open('feed')} className="tile-feed">
       {error && <p className="small warn-text">{error}</p>}
       {events ? <FeedList events={events} limit={9} /> : <Empty>Loading the log…</Empty>}
     </Tile>
@@ -329,7 +329,7 @@ function RecapTile({ ledger }: { ledger: boolean }) {
   const { open } = useApp()
   const { data, error } = useRecap(7)
   return (
-    <Tile title="This week" icon={<CalendarDays size={15} />} onOpen={() => open('recap')} className="tile-recap">
+    <Tile title="This week" icon={<CalendarDays size={16} />} onOpen={() => open('recap')} className="tile-recap">
       {!ledger && <Empty>The weekly recap needs Executor's data folder.</Empty>}
       {ledger && error && <p className="small warn-text">{error}</p>}
       {ledger && data && (
