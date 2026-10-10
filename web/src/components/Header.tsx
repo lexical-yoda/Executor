@@ -142,8 +142,20 @@ export function Header({
 
 export function Tabs({ alerts, bottom = false }: { alerts: Alert[]; bottom?: boolean }) {
   const { route, showDeck } = useApp()
+  // Sticky things below the top tabs (a deck's jump bar) need their height;
+  // the phone's tab bar sits at the bottom and takes none.
+  const bar = useRef<HTMLElement>(null)
+  useEffect(() => {
+    const el = bar.current
+    const set = () => document.documentElement.style.setProperty('--tabs-h', bottom || !el ? '0px' : `${el.offsetHeight}px`)
+    set()
+    if (bottom || !el) return
+    const sized = new ResizeObserver(set)
+    sized.observe(el)
+    return () => sized.disconnect()
+  }, [bottom])
   return (
-    <nav className={bottom ? 'tabbar' : 'tabs'} aria-label="Decks">
+    <nav className={bottom ? 'tabbar' : 'tabs'} aria-label="Decks" ref={bar}>
       {DECKS.map((deck) => {
         const info = DECK_INFO[deck]
         const mine = alerts.filter((a) => a.deck === deck)

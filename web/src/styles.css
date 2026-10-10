@@ -304,6 +304,43 @@ a {
   color: var(--muted);
 }
 
+/* The heading folds its section away; the chevron turns to say so. */
+.section-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.section-toggle:hover {
+  color: var(--text);
+}
+
+.section-chevron {
+  transition: transform 0.2s ease;
+}
+
+.section-folded .section-chevron {
+  transform: rotate(-90deg);
+}
+
+.section-folded .section-head {
+  margin-bottom: 0;
+}
+
+/* Sections jumped to land below the sticky header, tabs and jump bar. */
+.section {
+  scroll-margin-top: calc(var(--header-h, 69px) + var(--tabs-h, 0px) + 56px);
+}
+
 .card {
   position: relative;
   background: var(--panel);
@@ -1364,16 +1401,19 @@ a.tile:hover {
 }
 
 .tile-link {
-  position: absolute;
-  right: 10px;
-  bottom: 10px;
-  color: var(--dim);
-  opacity: 0;
-  transition: opacity 0.2s ease;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  color: var(--muted);
 }
 
-.tile:hover .tile-link {
-  opacity: 1;
+.tile-link:hover {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
 .chips {
@@ -1935,6 +1975,37 @@ a.tile:hover {
 
 .queue-meta {
   flex: none;
+}
+
+/* Second line of a queue row: the episode's title, then its state. */
+.queue-sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.queue-sub > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queue-chevron {
+  flex: none;
+  margin-left: auto;
+  color: var(--dim);
+  transition: transform 0.2s ease;
+}
+
+.queue-chevron.open {
+  transform: rotate(180deg);
+}
+
+.queue-nested {
+  margin: 6px 0 4px 14px;
+  padding-left: 10px;
+  border-left: 1px solid var(--border);
 }
 
 .queue-bar {
@@ -2731,11 +2802,6 @@ a.tile:hover {
 
 
 
-@media (max-width: 380px) {
-  .tiles {
-    grid-template-columns: 1fr;
-  }
-}
 
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -3000,8 +3066,8 @@ a.tile:hover {
   bottom: 0;
   z-index: 30;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
+  grid-template-columns: repeat(6, 1fr);
+  padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
   background: rgba(6, 9, 18, 0.92);
   backdrop-filter: blur(16px) saturate(150%);
   -webkit-backdrop-filter: blur(16px) saturate(150%);
@@ -3013,13 +3079,16 @@ a.tile:hover {
   padding: 6px 2px;
 }
 
+/* Six decks across a phone: one line each, the deck's name in plain case. */
 .tabbar .tab-name {
-  font-size: 9.5px;
-  letter-spacing: 0.03em;
+  font-size: 10px;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: nowrap;
 }
 
 .tabbar .tab-plain {
-  font-size: 9.5px;
+  display: none;
 }
 
 .tabbar .tab-active::after {
@@ -3146,9 +3215,10 @@ a.tile:hover {
   overflow: hidden;
 }
 
-.tile-engineering {
+/* Beside the map: Engineering above Hangar, the map spanning both. */
+.tile-engineering,
+.tile-hangar {
   grid-column: span 4;
-  grid-row: span 2;
 }
 
 .tile-holonet,
@@ -3904,16 +3974,21 @@ ul.recap-list {
   white-space: nowrap;
 }
 
+/* Cards flow down columns, each column filling its gaps, so a long requests
+   list beside a short downloads card leaves no hole. Now playing spans all. */
 .holonet-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-  gap: 16px;
-  align-items: start;
+  columns: 340px 3;
+  column-gap: 16px;
 }
 
-.holonet-grid .now-playing {
-  margin-bottom: 0;
-  grid-column: 1 / -1;
+.holonet-grid > * {
+  break-inside: avoid;
+  margin-bottom: 16px;
+}
+
+.holonet-grid .now-playing,
+.holonet-grid .now-playing-idle {
+  column-span: all;
 }
 
 .top-places .row-btn,
@@ -4272,6 +4347,12 @@ ul.recap-list {
 
 .action-card-desc {
   flex: 1;
+  /* Three lines on the card; the drawer has the whole description. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
 }
 
 .action-card-foot {
@@ -4654,6 +4735,7 @@ ul.recap-list {
     min-height: 520px;
   }
   .tile-engineering,
+  .tile-hangar,
   .tile-holonet,
   .tile-archives,
   .tile-armory {
@@ -4731,6 +4813,7 @@ ul.recap-list {
   }
   .hero,
   .tile-engineering,
+  .tile-hangar,
   .tile-holonet,
   .tile-archives,
   .tile-armory,
@@ -4757,7 +4840,7 @@ ul.recap-list {
     font-size: 11px;
   }
   .holonet-grid {
-    grid-template-columns: 1fr;
+    columns: 1;
   }
   .drawer {
     width: 100vw;
@@ -4789,10 +4872,24 @@ ul.recap-list {
   }
   .tiles {
     grid-template-columns: 1fr 1fr;
-    gap: 9px;
+    gap: 8px;
   }
-  .tile-link {
-    opacity: 1;
+  /* Two compact cards a row: name, response time, open button and status;
+     the containers are in the service's drawer. */
+  .tile {
+    padding: 10px 10px 10px 12px;
+  }
+  .tile .chips {
+    display: none;
+  }
+  .tile-top {
+    gap: 8px;
+  }
+  .tile .monogram {
+    display: none;
+  }
+  .tile-title h3 {
+    font-size: 13.5px;
   }
   .recap-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -4817,9 +4914,6 @@ ul.recap-list {
 }
 
 @media (max-width: 420px) {
-  .tiles {
-    grid-template-columns: 1fr;
-  }
   .storage-card {
     grid-column: auto;
   }
@@ -5224,4 +5318,100 @@ ul.recap-list {
   align-items: center;
   gap: 6px;
   width: fit-content;
+}
+
+/* ---------- Jump bar -------------------------------------------------------- */
+
+.jump-bar {
+  position: sticky;
+  top: calc(var(--header-h, 69px) + var(--tabs-h, 0px));
+  z-index: 8;
+  display: flex;
+  gap: 6px;
+  margin: -6px 0 2px;
+  padding: 8px 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  background: rgba(4, 6, 12, 0.94);
+  border-bottom: 1px solid var(--border);
+}
+
+.jump-link {
+  flex: none;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.jump-link:hover {
+  color: var(--text);
+}
+
+.jump-current {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+  background: var(--accent-soft);
+}
+
+/* A folded burst of downloads, opened: its events, indented. */
+.feed-nested {
+  margin: 2px 0 6px 18px;
+  padding-left: 10px;
+  border-left: 1px solid var(--border);
+}
+
+.drawer-body .range-tabs {
+  flex-wrap: wrap;
+  width: fit-content;
+}
+
+.now-playing-idle {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 16px;
+  margin-bottom: 14px;
+}
+
+.now-playing-idle .attached {
+  margin-left: auto;
+}
+
+.tile-runs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.tile-run-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Engineering tile: one line each for storage, DNS and the edge. */
+.system-lines {
+  display: grid;
+  gap: 2px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.system-name {
+  width: 70px;
+  flex: none;
+}
+
+.tile-title h3 .badge {
+  margin-left: 6px;
 }

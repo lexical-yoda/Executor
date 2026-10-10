@@ -3,7 +3,7 @@ import type { MouseEvent } from 'react'
 import type { Disk, NasAlert, Pool, TrueNASHealth } from '../api'
 import { ago, bytes, duration } from '../format'
 import { useApp, useClock } from '../state'
-import { Empty, Facts, RowButton, SourceNote } from './ui'
+import { DeckSection, Empty, Facts, RowButton, SourceNote } from './ui'
 import { Badge, sentence, STATUS_TONE } from './Badge'
 
 /** How worrying a disk temperature is: hard drives run cooler than SSDs. */
@@ -125,17 +125,21 @@ export function Storage({ health }: { health: TrueNASHealth }) {
   const loose = disks.filter((d) => !d.pool)
   const alerts = health.alerts ?? []
   return (
-    <section className="section" id="storage">
-      <div className="section-head">
-        <h2>Storage</h2>
-        {health.system && (
-          <RowButton className="small muted storage-system" onClick={() => open('nas')}>
-            TrueNAS {health.system.version}
-            {health.system.uptime_s != null && ` · up ${duration(health.system.uptime_s)}`}
-            {health.system.update && <span className="update-text"> · update available</span>}
-          </RowButton>
-        )}
-      </div>
+    <DeckSection
+      id="storage"
+      title="Storage"
+      aside={
+        <>
+          {health.system && (
+            <RowButton className="small muted storage-system" onClick={() => open('nas')}>
+              TrueNAS {health.system.version}
+              {health.system.uptime_s != null && ` · up ${duration(health.system.uptime_s)}`}
+              {health.system.update && <span className="update-text"> · update available</span>}
+            </RowButton>
+          )}
+        </>
+      }
+    >
       {!health.configured && <p className="small warn-text">TrueNAS is configured but TRUENAS_API_KEY is not set.</p>}
       {health.configured && health.error && <p className="small warn-text">TrueNAS unavailable: {health.error}</p>}
       {health.configured && !health.ok && !health.error && <Empty>Reading TrueNAS…</Empty>}
@@ -165,7 +169,7 @@ export function Storage({ health }: { health: TrueNASHealth }) {
           </article>
         </div>
       )}
-    </section>
+    </DeckSection>
   )
 }
 

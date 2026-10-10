@@ -4,7 +4,7 @@ import { api, type DayCount, type PhotoHistory, type PhotoJob, type PhotoLibrary
 import { bytes, pct } from '../format'
 import { useApp } from '../state'
 import { day, signed, SizeChart } from './Backups'
-import { Empty, Facts, Num, RowButton, SourceNote } from './ui'
+import { DeckSection, Empty, Facts, Num, RowButton, SourceNote } from './ui'
 import { Badge } from './Badge'
 import { RangePicker } from './RangePicker'
 
@@ -102,11 +102,15 @@ export function PhotoLibrarySection({ photos }: { photos: Photos }) {
   }
   const growth = photos.growth?.d7
   return (
-    <section className="section">
-      <div className="section-head">
-        <h2>Photo library</h2>
-        {lib?.update && <span className="small update-text">Immich {lib.latest} available</span>}
-      </div>
+    <DeckSection
+      id="photos"
+      title="Photo library"
+      aside={
+        <>
+          {lib?.update && <span className="small update-text">Immich {lib.latest} available</span>}
+        </>
+      }
+    >
       {!photos.configured && <p className="small warn-text">Immich is configured but IMMICH_API_KEY is not set.</p>}
       {photos.configured && photos.error && <p className="small warn-text">Immich unavailable: {photos.error}</p>}
       {lib ? (
@@ -169,7 +173,7 @@ export function PhotoLibrarySection({ photos }: { photos: Photos }) {
       ) : (
         photos.configured && !photos.error && <Empty>Reading the library…</Empty>
       )}
-    </section>
+    </DeckSection>
   )
 }
 

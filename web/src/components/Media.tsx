@@ -1,5 +1,5 @@
-import { ArrowDown, ArrowUp, Clapperboard, Download, Inbox, MapPin, Pause, Radio, Tv } from 'lucide-react'
-import { useState } from 'react'
+import { ArrowDown, ArrowUp, ChevronDown, Clapperboard, Download, Inbox, MapPin, Pause, Radio, Tv } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import type { JellyfinStatus, Media as MediaData, MediaRequest, Place, QueueItem, Watching } from '../api'
 import { ago, bytes, duration, rate } from '../format'
 import { streamKey } from '../map/types'
@@ -118,6 +118,7 @@ function QueueRow({ item }: { item: QueueItem }) {
   const pctDone = item.progress !== null ? Math.round(item.progress * 100) : null
   const active = item.status === 'downloading'
   const tone = queueTone(item)
+  const state = item.message ?? (!active && item.state ? item.state.replace(/([A-Z])/g, ' $1').toLowerCase() : null)
   return (
     <li>
       <button type="button" className={`queue-item row-btn q-${tone}`} onClick={() => open('download', item.id)}>
@@ -125,7 +126,6 @@ function QueueRow({ item }: { item: QueueItem }) {
           <span className="queue-title">
             {item.source === 'sonarr' ? <Tv size={13} /> : <Clapperboard size={13} />}
             <span>{item.title}</span>
-            {item.subtitle && <span className="muted small">{item.subtitle}</span>}
           </span>
           <span className="queue-meta small muted num">
             {pctDone !== null && `${pctDone}%`}
@@ -136,9 +136,10 @@ function QueueRow({ item }: { item: QueueItem }) {
         <span className="queue-bar">
           <span className={`queue-fill${active ? ' queue-active' : ''}`} style={{ width: `${pctDone ?? 0}%` }} />
         </span>
-        {(item.message || (!active && item.state)) && (
-          <span className={`small ${tone === 'up' ? 'muted' : 'warn-text'}`}>
-            {item.message ?? item.state?.replace(/([A-Z])/g, ' $1').toLowerCase()}
+        {(item.subtitle || state) && (
+          <span className="queue-sub small">
+            {item.subtitle && <span className="muted">{item.subtitle}</span>}
+            {state && <span className={tone === 'up' ? 'muted' : 'warn-text'}>{state}</span>}
           </span>
         )}
       </button>
@@ -146,9 +147,88 @@ function QueueRow({ item }: { item: QueueItem }) {
   )
 }
 
+/** Episodes of one show downloading together, as one row that opens up. */
+function ShowRow({ series, items }: { series: string; items: QueueItem[] }) {
+  const [opened, setOpened] = useState(false)
+  const size = items.reduce((sum, i) => sum + (i.size || 0), 0)
+  const done = items.reduce((sum, i) => sum + (i.size || 0) * (i.progress ?? 0), 0)
+  const pctDone = size ? Math.round((done / size) * 100) : null
+  const active = items.some((i) => i.status === 'downloading')
+  const eta = Math.max(0, ...items.filter((i) => i.status === 'downloading').map((i) => i.eta_s ?? 0))
+  const tones = items.map(queueTone)
+  const tone = tones.includes('down') ? 'down' : tones.includes('degraded') ? 'degraded' : 'up'
+  const stuck = items.filter((i) => queueTone(i) !== 'up').length
+  const codes = items.map((i) => i.episode).filter(Boolean).sort() as string[]
+  return (
+    <li>
+      <button type="button" className={`queue-item row-btn q-${tone}`} onClick={() => setOpened((v) => !v)} aria-expanded={opened}>
+        <span className="queue-top">
+          <span className="queue-title">
+            <Tv size={13} />
+            <span>{series}</span>
+          </span>
+          <span className="queue-meta small muted num">
+            {pctDone !== null && `${pctDone}%`}
+            {active && eta ? ` · ${duration(eta)} left` : ''}
+            {size ? ` · ${bytes(size)}` : ''}
+          </span>
+        </span>
+        <span className="queue-bar">
+          <span className={`queue-fill${active ? ' queue-active' : ''}`} style={{ width: `${pctDone ?? 0}%` }} />
+        </span>
+        <span className="queue-sub small">
+          <span className="muted">
+            {items.length} episodes{codes.length > 1 ? ` · ${codes[0]} to ${codes[codes.length - 1]}` : ''}
+          </span>
+          {stuck > 0 && <span className="warn-text">{stuck} need a look</span>}
+          <ChevronDown size={13} className={`queue-chevron${opened ? ' open' : ''}`} aria-hidden="true" />
+        </span>
+      </button>
+      {opened && (
+        <ul className="queue queue-nested">
+          {items.map((q) => (
+            <QueueRow key={q.id} item={q} />
+          ))}
+        </ul>
+      )}
+    </li>
+  )
+}
+
+type QueueEntry = { kind: 'one'; item: QueueItem } | { kind: 'show'; series: string; items: QueueItem[] }
+
+// The show of a queue item; older servers send only the "Show S01E02" title.
+const seriesOf = (q: QueueItem) => q.series ?? (q.source === 'sonarr' ? q.title.replace(/ S\d+E\d+$/, '') : null)
+
+/** Queue items in order, with every show that has several episodes folded into one entry. */
+function groupQueue(raw: QueueItem[]): QueueEntry[] {
+  const queue = raw.map((q) => ({ ...q, series: seriesOf(q), episode: q.episode ?? q.title.match(/S\d+E\d+$/)?.[0] ?? null }))
+  const counts = new Map<string, number>()
+  for (const q of queue) if (q.series) counts.set(q.series, (counts.get(q.series) ?? 0) + 1)
+  const shows = new Map<string, QueueEntry & { kind: 'show' }>()
+  const out: QueueEntry[] = []
+  for (const q of queue) {
+    if (q.series && (counts.get(q.series) ?? 0) > 1) {
+      const show = shows.get(q.series)
+      if (show) show.items.push(q)
+      else {
+        const entry = { kind: 'show' as const, series: q.series, items: [q] }
+        shows.set(q.series, entry)
+        out.push(entry)
+      }
+    } else out.push({ kind: 'one', item: q })
+  }
+  return out
+}
+
+// Rows shown before "Show all": a long queue should not outgrow its neighbours.
+const QUEUE_ROWS = 8
+
 export function DownloadsCard({ data }: { data: MediaData['downloads'] }) {
   const t = data.torrents
   const moving = (t.down_bps ?? 0) > 0
+  const entries = useMemo(() => groupQueue(data.queue), [data.queue])
+  const [showAll, setShowAll] = useState(false)
   return (
     <article className="edge-card card media-card">
       <div className="card-head">
@@ -192,12 +272,23 @@ export function DownloadsCard({ data }: { data: MediaData['downloads'] }) {
           {t.connection && t.connection !== 'connected' && <span className="stat-chip chip-attention">{t.connection}</span>}
         </div>
       )}
-      {data.queue.length > 0 ? (
-        <ul className="queue">
-          {data.queue.map((q) => (
-            <QueueRow key={q.id} item={q} />
-          ))}
-        </ul>
+      {entries.length > 0 ? (
+        <>
+          <ul className="queue">
+            {(showAll ? entries : entries.slice(0, QUEUE_ROWS)).map((e) =>
+              e.kind === 'show' ? (
+                <ShowRow key={e.series} series={e.series} items={e.items} />
+              ) : (
+                <QueueRow key={e.item.id} item={e.item} />
+              ),
+            )}
+          </ul>
+          {entries.length > QUEUE_ROWS && (
+            <button type="button" className="link-btn small" onClick={() => setShowAll((v) => !v)}>
+              {showAll ? 'Show fewer' : `Show all ${entries.length} rows (${data.queue.length} items)`}
+            </button>
+          )}
+        </>
       ) : (
         <Empty>Hyperspace lanes are clear: nothing in the queue.</Empty>
       )}
@@ -258,6 +349,16 @@ function StreamRow({ s }: { s: Watching }) {
 export function NowPlayingCard({ data, limit }: { data: JellyfinStatus; limit?: number }) {
   const n = data.watching.length
   const shown = limit ? data.watching.slice(0, limit) : data.watching
+  if (data.ok && !n) {
+    // Nobody watching: one slim line instead of a card full of nothing.
+    return (
+      <article className="card now-playing-idle">
+        <Radio size={15} className="muted" />
+        <span className="small muted">Now playing: nobody is watching right now.</span>
+        <AttachedActions target="now-playing" />
+      </article>
+    )
+  }
   return (
     <article className="edge-card card media-card now-playing">
       <div className="card-head">
@@ -266,7 +367,6 @@ export function NowPlayingCard({ data, limit }: { data: JellyfinStatus; limit?: 
         <span className="small muted">{n ? `${n} ${n === 1 ? 'stream' : 'streams'}` : ''}</span>
       </div>
       {!data.ok && <p className="small warn-text">Jellyfin unavailable: {data.error}</p>}
-      {data.ok && !n && <Empty>No transmissions right now.</Empty>}
       {n > 0 && (
         <ul className="streams-live">
           {shown.map((s, i) => (

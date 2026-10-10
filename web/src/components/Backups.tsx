@@ -11,7 +11,7 @@ import { ago, bytes, duration, until } from '../format'
 import { useApp, useClock } from '../state'
 import { AttachedActions } from './ActionKit'
 import { Badge, type Tone } from './Badge'
-import { Empty, Facts, Num, SourceNote } from './ui'
+import { DeckSection, Empty, Facts, Num, SourceNote } from './ui'
 
 export const LABEL: Record<BackupStatus, string> = {
   ok: 'OK',
@@ -332,11 +332,15 @@ export function Backups({ backups }: { backups: BackupsData }) {
   const now = useClock()
   const { duplicati, files } = backups
   return (
-    <section className="section">
-      <div className="section-head">
-        <h2>Backups</h2>
-        {duplicati.paused && <span className="small warn-text">Duplicati is paused</span>}
-      </div>
+    <DeckSection
+      id="backups"
+      title="Backups"
+      aside={
+        <>
+          {duplicati.paused && <span className="small warn-text">Duplicati is paused</span>}
+        </>
+      }
+    >
       {duplicati.configured && !duplicati.ok && (
         <p className="small warn-text">Duplicati unavailable: {duplicati.error}</p>
       )}
@@ -352,7 +356,7 @@ export function Backups({ backups }: { backups: BackupsData }) {
         ))}
       </div>
       <AttachedActions target="backups" />
-    </section>
+    </DeckSection>
   )
 }
 

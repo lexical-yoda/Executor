@@ -1,4 +1,4 @@
-import { ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { ago } from '../format'
 import { useClock } from '../state'
@@ -105,7 +105,26 @@ export function Tile({
   )
 }
 
-/** Section heading inside a deck. */
+// Which sections this browser has folded away; remembered per device only.
+const FOLDED_KEY = 'executor.folded'
+
+function readFolded(): Set<string> {
+  try {
+    return new Set(JSON.parse(window.localStorage.getItem(FOLDED_KEY) ?? '[]') as string[])
+  } catch {
+    return new Set()
+  }
+}
+
+function writeFolded(folded: Set<string>) {
+  try {
+    window.localStorage.setItem(FOLDED_KEY, JSON.stringify([...folded]))
+  } catch {
+    /* storage can be unavailable; folding still works for this visit */
+  }
+}
+
+/** A section of a deck. Its heading folds it away (remembered on this device). */
 export function DeckSection({
   title,
   aside,
@@ -117,13 +136,27 @@ export function DeckSection({
   children: ReactNode
   id?: string
 }) {
+  const key = id ?? title.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+  const [folded, setFolded] = useState(() => readFolded().has(key))
+  const toggle = () => {
+    const all = readFolded()
+    if (folded) all.delete(key)
+    else all.add(key)
+    writeFolded(all)
+    setFolded(!folded)
+  }
   return (
-    <section className="section" id={id}>
+    <section className={`section${folded ? ' section-folded' : ''}`} id={id}>
       <div className="section-head">
-        <h2>{title}</h2>
-        {aside}
+        <h2>
+          <button type="button" className="section-toggle" onClick={toggle} aria-expanded={!folded}>
+            <ChevronDown size={14} className="section-chevron" aria-hidden="true" />
+            {title}
+          </button>
+        </h2>
+        {!folded && aside}
       </div>
-      {children}
+      {!folded && children}
     </section>
   )
 }

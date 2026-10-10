@@ -4,7 +4,7 @@ import { ago } from '../format'
 import { useApp, useClock } from '../state'
 import { ShieldsCard, TrafficCard } from './Traffic'
 import { AttachedActions } from './ActionKit'
-import { Empty, Facts, SourceNote } from './ui'
+import { DeckSection, Empty, Facts, SourceNote } from './ui'
 
 export function gb(value: number | null): string {
   if (value === null) return '—'
@@ -198,10 +198,7 @@ function CertificateCard({ certs }: { certs: Certificate[] }) {
 export function Edge({ edge }: { edge: EdgeData }) {
   const now = useClock()
   return (
-    <section className="section">
-      <div className="section-head">
-        <h2>Edge</h2>
-      </div>
+    <DeckSection id="edge" title="Edge">
       <div className="edge-grid">
         <BandwidthCard bw={edge.bandwidth} error={edge.bandwidth_error} now={now} />
         <CertificateCard certs={edge.certificates} />
@@ -212,7 +209,7 @@ export function Edge({ edge }: { edge: EdgeData }) {
           <ShieldsCard traffic={edge.traffic} />
         </div>
       )}
-    </section>
+    </DeckSection>
   )
 }
 

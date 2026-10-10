@@ -23,7 +23,7 @@ import { Sparkline } from './Sparkline'
 import { StatusDot, StatusPill } from './StatusDot'
 import { PoolsSummary } from './Storage'
 import { Badge, sentence } from './Badge'
-import { Num } from './ui'
+import { DeckSection, Num } from './ui'
 
 export const ICONS: Record<MachineIcon, typeof Server> = {
   server: Server,
@@ -311,14 +311,18 @@ export function Machines({ machines }: { machines: MachineStatus[] }) {
   const compact = machines.filter((m) => !m.monitored && !m.details)
 
   return (
-    <section className="section">
-      <div className="section-head">
-        <h2>Machines</h2>
-        <span className="muted small">
-          {machines.filter((m) => m.status === 'up').length} of {machines.filter((m) => !m.away).length} online
-          {machines.some((m) => m.away) && ` · ${machines.filter((m) => m.away).length} away`}
-        </span>
-      </div>
+    <DeckSection
+      id="machines"
+      title="Machines"
+      aside={
+        <>
+          <span className="muted small">
+            {machines.filter((m) => m.status === 'up').length} of {machines.filter((m) => !m.away).length} online
+            {machines.some((m) => m.away) && ` · ${machines.filter((m) => m.away).length} away`}
+          </span>
+        </>
+      }
+    >
       <div className="machines-rich">
         {rich.map((m, i) =>
           m.monitored ? (
@@ -335,6 +339,6 @@ export function Machines({ machines }: { machines: MachineStatus[] }) {
           ))}
         </div>
       )}
-    </section>
+    </DeckSection>
   )
 }

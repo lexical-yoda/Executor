@@ -65,6 +65,7 @@ def test_queue_items():
         "series": {"title": "Show"}, "episode": {"seasonNumber": 1, "episodeNumber": 2, "title": "Pilot"},
     }, "sonarr")
     assert episode["title"] == "Show S01E02" and episode["subtitle"] == "Pilot"
+    assert (episode["series"], episode["episode"]) == ("Show", "S01E02")
     assert episode["progress"] == 0.75 and episode["eta_s"] == 300
     movie = summarize_queue_item({
         "id": 2, "size": 0, "status": "warning", "trackedDownloadStatus": "warning",
@@ -72,6 +73,7 @@ def test_queue_items():
         "movie": {"title": "Film", "year": 1999},
     }, "radarr")
     assert movie["title"] == "Film" and movie["subtitle"] == "1999" and movie["progress"] is None
+    assert movie["series"] is None
     assert movie["health"] == "warning" and "eligible" in movie["message"]
 
 

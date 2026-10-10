@@ -36,7 +36,7 @@ export function collectAlerts(s: Snapshot | null): Alert[] {
       add({
         key: `service:${svc.id}`,
         level: svc.status === 'down' ? 'bad' : 'warn',
-        deck: 'engineering',
+        deck: 'hangar',
         title: `${svc.name} ${svc.status === 'down' ? 'is down' : 'is degraded'}`,
         detail: svc.error,
         ref: { kind: 'service', id: svc.id },

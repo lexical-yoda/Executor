@@ -5,6 +5,7 @@ import { latency } from '../format'
 import { useApp } from '../state'
 import { StatusDot } from './StatusDot'
 import { Badge } from './Badge'
+import { DeckSection } from './ui'
 
 const GROUP_ICONS: Record<string, typeof Film> = {
   Media: Film,
@@ -60,6 +61,20 @@ function Tile({ service, index }: { service: ServiceStatus; index: number }) {
               : (service.description ?? latency(service.latency_ms))}
           </span>
         </div>
+        {service.url && (
+          <a
+            className="tile-link"
+            href={service.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+            aria-label={`Open ${service.name}`}
+            title={`Open ${service.name}`}
+          >
+            <ExternalLink size={14} />
+          </a>
+        )}
         <StatusDot status={service.status} />
       </div>
       {service.containers.length > 0 && (
@@ -71,19 +86,6 @@ function Tile({ service, index }: { service: ServiceStatus; index: number }) {
             </li>
           ))}
         </ul>
-      )}
-      {service.url && (
-        <a
-          className="tile-link"
-          href={service.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(e) => e.stopPropagation()}
-          aria-label={`Open ${service.name}`}
-          title={`Open ${service.name}`}
-        >
-          <ExternalLink size={14} />
-        </a>
       )}
     </div>
   )
@@ -105,30 +107,34 @@ export function Services({ services, groups }: { services: ServiceStatus[]; grou
   const issues = services.filter((s) => s.status !== 'up').length
 
   return (
-    <section className="section">
-      <div className="section-head">
-        <h2>Services</h2>
-        <div className="toolbar">
-          <label className="search">
-            <Search size={14} aria-hidden="true" />
-            <input
-              type="search"
-              placeholder="Filter services or containers"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              aria-label="Filter services"
-            />
-          </label>
-          <button
-            type="button"
-            className={`toggle ${issuesOnly ? 'toggle-on' : ''}`}
-            onClick={() => setIssuesOnly((v) => !v)}
-            aria-pressed={issuesOnly}
-          >
-            Issues only{issues ? ` (${issues})` : ''}
-          </button>
-        </div>
-      </div>
+    <DeckSection
+      id="services"
+      title="Services"
+      aside={
+        <>
+          <div className="toolbar">
+            <label className="search">
+              <Search size={14} aria-hidden="true" />
+              <input
+                type="search"
+                placeholder="Filter services or containers"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                aria-label="Filter services"
+              />
+            </label>
+            <button
+              type="button"
+              className={`toggle ${issuesOnly ? 'toggle-on' : ''}`}
+              onClick={() => setIssuesOnly((v) => !v)}
+              aria-pressed={issuesOnly}
+            >
+              Issues only{issues ? ` (${issues})` : ''}
+            </button>
+          </div>
+        </>
+      }
+    >
 
       {groups.map((group) => {
         const items = visible.filter((s) => s.group === group)
@@ -153,6 +159,6 @@ export function Services({ services, groups }: { services: ServiceStatus[]; grou
         )
       })}
       {!visible.length && <p className="empty muted">Nothing matches.</p>}
-    </section>
+    </DeckSection>
   )
 }

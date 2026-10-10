@@ -30,17 +30,19 @@ One Docker image runs in two roles, as two containers in one stack:
 
 ### The page
 
-Five decks, switched by tabs (a bottom bar on phones) or the keys 1 to 5:
+Six decks, switched by tabs (a bottom bar on phones) or the keys 1 to 6:
 
 | Deck | Shows |
 |---|---|
 | Bridge | The map with live streams, and tiles summarising every other deck, the event log and the weekly recap |
-| Engineering | Machines, storage health, DNS, the edge (bandwidth and certificates) and services |
+| Hangar | Every service, grouped, with search and an issues-only filter; each card opens the app in one tap |
+| Engineering | Machines, storage health, DNS and the edge (bandwidth, certificates, traffic and shields), with a jump bar |
 | Holonet | The map explorer, now playing, requests, downloads, the media library, places and viewers |
 | Archives | The photo library, backup jobs, file backups and off-site storage |
 | Armory | Every action, grouped, and the recent runs |
 
-A status line and a row of alerts stay at the top on every deck. Every card,
+A status line and a row of alerts stay at the top on every deck. Any deck
+section folds away from its heading, remembered on that device. Every card,
 row, map marker and alert opens a side drawer with the details and where the
 figures come from; the address bar keeps the deck and the open drawer, so a
 refresh or a bookmark lands in the same place. The eye button blurs names

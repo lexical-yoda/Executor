@@ -250,13 +250,13 @@ class Tracker:
                 continue
             if (old.get("progress") or 0) >= 0.99 or old.get("status") in ("completed", "importing"):
                 finished.append(old)
-        # A season grabbed at once arrives as many queue items: one event per title.
+        # A season grabbed at once arrives as many queue items: one event per show.
         for title, items in _by_title(finished).items():
-            self.emit("download", "good", f"Downloaded {_label(items[0]) if len(items) == 1 else title}",
+            self.emit("download", "good", f"Downloaded {_what(title, items)}",
                       _batch(items), ref=f"download:{items[0]['id']}", when=now)
         added = [current[qid] for qid in current.keys() - before.keys()]
         for title, items in _by_title(added).items():
-            self.emit("download", "info", f"Grabbed {_label(items[0]) if len(items) == 1 else title}",
+            self.emit("download", "info", f"Grabbed {_what(title, items)}",
                       _batch(items), ref=f"download:{items[0]['id']}", when=now)
 
     def requests(self, pending: list[dict], processing: list[dict], now: float | None = None) -> None:
@@ -405,16 +405,27 @@ def _label(item: dict) -> str:
 
 
 def _by_title(items: list[dict]) -> dict[str, list[dict]]:
+    """Episodes of one show together (by series), everything else by title."""
     groups: dict[str, list[dict]] = {}
     for item in items:
-        groups.setdefault(item["title"], []).append(item)
+        groups.setdefault(item.get("series") or item["title"], []).append(item)
     return groups
+
+
+def _what(title: str, items: list[dict]) -> str:
+    if len(items) == 1:
+        return _label(items[0])
+    if items[0].get("series"):
+        return f"{len(items)} episodes of {title}"
+    return title
 
 
 def _batch(items: list[dict]) -> str | None:
     size = _size(sum(i.get("size") or 0 for i in items)) if any(i.get("size") for i in items) else ""
-    count = f"{len(items)} items" if len(items) > 1 else ""
-    return " · ".join(p for p in (count, size) if p) or None
+    codes = sorted(i["episode"] for i in items if i.get("episode"))
+    span = (f"{codes[0]} to {codes[-1]}" if len(codes) > 1 else "") if len(codes) == len(items) else ""
+    count = f"{len(items)} items" if len(items) > 1 and not span and not items[0].get("series") else ""
+    return " · ".join(p for p in (span or count, size) if p) or None
 
 
 def _degraded_reason(service: dict) -> str | None:

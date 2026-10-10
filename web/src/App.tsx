@@ -8,6 +8,7 @@ import { Archives } from './decks/Archives'
 import { Armory } from './decks/Armory'
 import { Bridge } from './decks/Bridge'
 import { Engineering } from './decks/Engineering'
+import { Hangar } from './decks/Hangar'
 import { Holonet } from './decks/Holonet'
 import { Settings } from './decks/Settings'
 import { useNarrow, usePoll, usePresentation } from './hooks'
@@ -17,6 +18,7 @@ import { ActionsProvider, AppProvider, ClockProvider, useApp } from './state'
 // The demo tour: how long it lingers on each deck.
 const TOUR: { deck: Deck; ms: number }[] = [
   { deck: 'bridge', ms: 26_000 },
+  { deck: 'hangar', ms: 10_000 },
   { deck: 'holonet', ms: 22_000 },
   { deck: 'engineering', ms: 14_000 },
   { deck: 'archives', ms: 10_000 },
@@ -94,6 +96,7 @@ function Shell() {
         {snapshot ? (
           <Guard key={deck} label={DECK_INFO[deck].name}>
             {deck === 'bridge' && <Bridge tour={attract} />}
+            {deck === 'hangar' && <Hangar />}
             {deck === 'engineering' && <Engineering />}
             {deck === 'holonet' && <Holonet tour={attract} />}
             {deck === 'archives' && <Archives />}

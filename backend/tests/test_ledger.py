@@ -68,6 +68,21 @@ def test_downloads_group_a_season_and_ignore_new_baselines():
     assert events[1]["title"] == "Grabbed Show" and events[1]["detail"] == "3 items · 3.0 GiB"
 
 
+def test_downloads_of_one_show_make_one_event():
+    def ep(n, progress):
+        return {"id": f"sonarr-{n}", "title": f"Show S02E{n:02d}", "subtitle": f"Episode {n}", "series": "Show",
+                "episode": f"S02E{n:02d}", "size": 2**30, "progress": progress}
+
+    tracker = Tracker()
+    tracker.downloads([])
+    tracker.downloads([ep(n, 0.2) for n in range(1, 6)])
+    tracker.downloads([ep(n, 1.0) for n in range(1, 6)])
+    tracker.downloads([])
+    done, grabbed = tracker.recent()[:2]
+    assert done["title"] == "Downloaded 5 episodes of Show" and done["detail"] == "S02E01 to S02E05 · 5.0 GiB"
+    assert grabbed["title"] == "Grabbed 5 episodes of Show"
+
+
 def test_backups_runs_streams_and_requests():
     tracker = Tracker()
     job = {"id": "1", "name": "Glacier", "status": "ok", "last_finished": 100, "last_result": "Success",

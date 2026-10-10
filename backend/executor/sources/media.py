@@ -125,6 +125,7 @@ def summarize_queue_item(item: dict, source: str) -> dict:
         title = f"{series}{code}"
         subtitle = episode.get("title")
     else:
+        series = code = None
         movie = item.get("movie") or {}
         title = movie.get("title") or item.get("title") or "Unknown movie"
         subtitle = str(movie["year"]) if movie.get("year") else None
@@ -134,6 +135,10 @@ def summarize_queue_item(item: dict, source: str) -> dict:
         "source": source,
         "title": title,
         "subtitle": subtitle,
+        # The show an episode belongs to, and its SxxEyy, so a season grabbed at
+        # once can be shown (and logged) as one row.
+        "series": series,
+        "episode": code.strip() if code else None,
         "size": size,
         "progress": round(1 - left / size, 4) if size else None,
         "eta_s": parse_timeleft(item.get("timeleft")),

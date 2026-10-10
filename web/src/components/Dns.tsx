@@ -3,7 +3,7 @@ import type { KeyboardEvent } from 'react'
 import type { PiHoleStatus } from '../api'
 import { ago, duration } from '../format'
 import { useApp, useClock } from '../state'
-import { Empty, Facts, Num, SourceNote } from './ui'
+import { DeckSection, Empty, Facts, Num, SourceNote } from './ui'
 import { Badge } from './Badge'
 import { AttachedActions } from './ActionKit'
 
@@ -60,10 +60,7 @@ export function DnsCard({ dns }: { dns: PiHoleStatus }) {
     }
   }
   return (
-    <section className="section">
-      <div className="section-head">
-        <h2>DNS</h2>
-      </div>
+    <DeckSection id="dns" title="DNS">
       {!dns.configured && <p className="small warn-text">Pi-hole is configured but PIHOLE_PASSWORD is not set.</p>}
       {dns.configured && dns.error && <p className="small warn-text">Pi-hole unavailable: {dns.error}</p>}
       {dns.configured && !dns.ok && !dns.error && <Empty>Asking Pi-hole…</Empty>}
@@ -117,7 +114,7 @@ export function DnsCard({ dns }: { dns: PiHoleStatus }) {
           <AttachedActions target="dns" />
         </article>
       )}
-    </section>
+    </DeckSection>
   )
 }
 

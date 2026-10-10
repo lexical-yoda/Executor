@@ -532,6 +532,9 @@ export interface QueueItem {
   source: 'sonarr' | 'radarr'
   title: string
   subtitle: string | null
+  /** The show an episode belongs to, and its SxxEyy (absent for films). */
+  series?: string | null
+  episode?: string | null
   size: number
   progress: number | null
   eta_s: number | null

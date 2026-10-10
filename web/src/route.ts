@@ -3,17 +3,18 @@ import { useCallback, useEffect, useState } from 'react'
 // The page's location lives in the hash, so refresh and bookmarks land on the
 // same deck with the same details open: #/deck or #/deck/kind/id.
 
-export const DECKS = ['bridge', 'engineering', 'holonet', 'archives', 'armory'] as const
+export const DECKS = ['bridge', 'hangar', 'engineering', 'holonet', 'archives', 'armory'] as const
 // Settings is a page of its own, reached from the header rather than the tabs.
 export const PAGES = [...DECKS, 'settings'] as const
 export type Deck = (typeof PAGES)[number]
 
 export const DECK_INFO: Record<Deck, { name: string; plain: string; key: string }> = {
   bridge: { name: 'Bridge', plain: 'Overview', key: '1' },
-  engineering: { name: 'Engineering', plain: 'Systems', key: '2' },
-  holonet: { name: 'Holonet', plain: 'Media', key: '3' },
-  archives: { name: 'Archives', plain: 'Backups', key: '4' },
-  armory: { name: 'Armory', plain: 'Controls', key: '5' },
+  hangar: { name: 'Hangar', plain: 'Services', key: '2' },
+  engineering: { name: 'Engineering', plain: 'Systems', key: '3' },
+  holonet: { name: 'Holonet', plain: 'Media', key: '4' },
+  archives: { name: 'Archives', plain: 'Backups', key: '5' },
+  armory: { name: 'Armory', plain: 'Controls', key: '6' },
   settings: { name: 'Settings', plain: 'Configuration', key: ',' },
 }
 

@@ -1,17 +1,17 @@
-import { Archive, ArrowDown, CalendarDays, Cpu, Map as MapIcon, Radio, ScrollText, Thermometer, Zap } from 'lucide-react'
+import { Archive, ArrowDown, CalendarDays, Cpu, Globe, HardDrive, Map as MapIcon, Radio, Rocket, ScrollText, ShieldBan, Thermometer, Zap } from 'lucide-react'
 import { lazy, Suspense, useMemo } from 'react'
 import type { MachineStatus, Snapshot, Status } from '../api'
 import { ago, bytes, machineState, pct, rate } from '../format'
 import { streamKey } from '../map/types'
 import { useActions, useApp, useClock } from '../state'
-import { runClock, runSeconds } from '../components/ActionKit'
+import { RunBadge, runClock, runSeconds } from '../components/ActionKit'
 import { BackupPill } from '../components/Backups'
-import { gb } from '../components/Edge'
 import { FeedList, useEvents } from '../components/Feed'
 import { ICONS } from '../components/Machines'
 import { placeName, Poster } from '../components/Media'
 import { RecapHighlights, RecapStats, useRecap } from '../components/Recap'
 import { StatusDot } from '../components/StatusDot'
+import { poolTone } from '../components/Storage'
 import { Empty, Num, RowButton, Tile } from '../components/ui'
 
 const MapView = lazy(() => import('../map/MapView'))
@@ -72,22 +72,39 @@ function MachineRow({ m }: { m: MachineStatus }) {
   )
 }
 
+/** Show a deck and bring one of its sections into view. */
+function useJump() {
+  const { showDeck } = useApp()
+  return (deck: 'engineering' | 'hangar', section?: string) => {
+    showDeck(deck)
+    if (section) window.setTimeout(() => document.getElementById(section)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80)
+  }
+}
+
+const count = (v: number) => (v >= 10_000 ? `${(v / 1000).toFixed(1)}k` : Math.round(v).toLocaleString())
+
 function EngineeringTile({ s }: { s: Snapshot }) {
-  const { showDeck, open } = useApp()
+  const jump = useJump()
   const machines = [...s.machines].sort((a, b) => Number(a.roaming) - Number(b.roaming))
-  const down = s.services.filter((x) => x.status !== 'up' && x.status !== 'unknown')
+  const machinesDown = s.machines.some((m) => m.status === 'down' && !m.away)
   const cert = s.edge?.certificates.reduce<number | null>(
     (min, c) => (c.days_left != null && (min == null || c.days_left < min) ? c.days_left : min),
     null,
   )
-  const bw = s.edge?.bandwidth
+  const nas = s.truenas
+  const pools = nas?.ok ? nas.pools : []
+  const healthy = pools.filter((p) => poolTone(p) === 'up').length
+  const fullest = [...pools].sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0))[0]
+  const dns = s.pihole
+  const traffic = s.edge?.traffic
+  const th = traffic?.ok ? traffic.threats : null
   return (
     <Tile
       title="Engineering"
       subtitle={`${s.summary.machines_up}/${s.summary.machines_total} machines online`}
       icon={<Cpu size={16} />}
-      onOpen={() => showDeck('engineering')}
-      tone={down.some((x) => x.status === 'down') ? 'down' : down.length ? 'degraded' : 'up'}
+      onOpen={() => jump('engineering')}
+      tone={machinesDown ? 'down' : healthy < pools.length ? 'degraded' : 'up'}
       className="tile-engineering"
     >
       <div className="machine-rows">
@@ -95,32 +112,65 @@ function EngineeringTile({ s }: { s: Snapshot }) {
           <MachineRow key={m.id} m={m} />
         ))}
       </div>
-      <div className="tile-foot">
-        <button type="button" className="foot-stat" onClick={() => showDeck('engineering')}>
-          <Num value={s.summary.services_up} />/{s.summary.services_total} <span className="muted">services up</span>
-        </button>
-        {s.summary.containers_known && (
-          <span className="foot-stat">
-            <Num value={s.summary.containers_running} />/{s.summary.containers_total} <span className="muted">containers</span>
-          </span>
+      <div className="system-lines">
+        {pools.length > 0 && (
+          <RowButton onClick={() => jump('engineering', 'storage')}>
+            <HardDrive size={13} className="muted" />
+            <span className="system-name">Storage</span>
+            <span className={`small ${healthy === pools.length ? 'muted' : 'warn-text'}`}>
+              {healthy === pools.length ? `${pools.length} pools healthy` : `${pools.length - healthy} pools need a look`}
+              {fullest?.pct != null && ` · ${fullest.name} ${Math.round(fullest.pct)}%`}
+            </span>
+          </RowButton>
         )}
-        {cert != null && (
-          <span className="foot-stat">
-            <span className="num">{Math.floor(cert)}d</span> <span className="muted">to cert expiry</span>
-          </span>
+        {dns?.ok && dns.queries != null && (
+          <RowButton onClick={() => jump('engineering', 'dns')}>
+            <ShieldBan size={13} className="muted" />
+            <span className="system-name">DNS</span>
+            <span className={`small ${dns.blocking === 'enabled' ? 'muted' : 'warn-text'}`}>
+              {dns.blocking === 'enabled' ? `${pct(dns.pct_blocked ?? 0)} blocked of ${count(dns.queries)} queries` : 'Not blocking'}
+            </span>
+          </RowButton>
         )}
-        {bw?.used_pct != null && (
-          <button type="button" className="foot-stat" onClick={() => open('bandwidth')}>
-            <span className="num">{gb(bw.out_gb)}</span> <span className="muted">VPS out ({Math.round(bw.used_pct)}%)</span>
-          </button>
+        {s.edge && (
+          <RowButton onClick={() => jump('engineering', 'edge')}>
+            <Globe size={13} className="muted" />
+            <span className="system-name">Edge</span>
+            <span className="small muted">
+              {[
+                traffic?.ok && traffic.totals ? `${count(traffic.totals.requests)} requests` : null,
+                th ? `${count(th.ssh + th.fw + th.scans)} turned away` : null,
+                cert != null ? `cert ${Math.floor(cert)}d` : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </span>
+          </RowButton>
         )}
       </div>
+    </Tile>
+  )
+}
+
+function HangarTile({ s }: { s: Snapshot }) {
+  const jump = useJump()
+  const { open } = useApp()
+  const down = s.services.filter((x) => x.status !== 'up' && x.status !== 'unknown')
+  return (
+    <Tile
+      title="Hangar"
+      subtitle={`${s.summary.services_up}/${s.summary.services_total} services up`}
+      icon={<Rocket size={16} />}
+      onOpen={() => jump('hangar')}
+      tone={down.some((x) => x.status === 'down') ? 'down' : down.length ? 'degraded' : 'up'}
+      className="tile-hangar"
+    >
       <div className="group-health">
         {s.groups.map((group) => {
           const items = s.services.filter((x) => x.group === group)
           if (!items.length) return null
           return (
-            <RowButton key={group} onClick={() => showDeck('engineering')} title={`${group}: ${items.filter((x) => x.status === 'up').length} of ${items.length} up`}>
+            <RowButton key={group} onClick={() => jump('hangar')} title={`${group}: ${items.filter((x) => x.status === 'up').length} of ${items.length} up`}>
               <span className="group-name">{group}</span>
               <span className="group-dots">
                 {items.map((x) => (
@@ -141,6 +191,13 @@ function EngineeringTile({ s }: { s: Snapshot }) {
             </li>
           ))}
         </ul>
+      )}
+      {s.summary.containers_known && (
+        <div className="tile-foot">
+          <span className="foot-stat">
+            <Num value={s.summary.containers_running} />/{s.summary.containers_total} <span className="muted">containers running</span>
+          </span>
+        </div>
       )}
     </Tile>
   )
@@ -285,7 +342,7 @@ function ArmoryTile() {
     ...recentIds.map((id) => actions?.find((a) => a.id === id)).filter(Boolean),
     ...(actions ?? []).filter((a) => !recentIds.includes(a.id)),
   ].slice(0, 4)
-  const last = runs[0]
+  const recent = runs.filter((r) => r.id !== running?.id).slice(0, 3)
   return (
     <Tile title="Armory" subtitle={`${actions?.length ?? 0} actions ready`} icon={<Zap size={16} />} onOpen={() => showDeck('armory')} className="tile-armory">
       {running ? (
@@ -294,14 +351,21 @@ function ArmoryTile() {
           <span>{running.title}</span>
           <span className="num small">{runClock(runSeconds(running.started_at, null, now))}</span>
         </RowButton>
-      ) : last ? (
-        <RowButton onClick={() => open('run', last.id)}>
-          <span className={`run-dot run-${last.status}`}>{last.status}</span>
-          <span>{last.title}</span>
-          <span className="small muted">{ago(last.started_at, now)}</span>
-        </RowButton>
       ) : (
-        <Empty>No actions run yet.</Empty>
+        !recent.length && <Empty>No actions run yet.</Empty>
+      )}
+      {recent.length > 0 && (
+        <ul className="tile-runs">
+          {recent.map((r) => (
+            <li key={r.id}>
+              <RowButton onClick={() => open('run', r.id)}>
+                <RunBadge status={r.status} />
+                <span className="tile-run-title">{r.title}</span>
+                <span className="small muted">{ago(r.started_at, now)}</span>
+              </RowButton>
+            </li>
+          ))}
+        </ul>
       )}
       <div className="quick-actions">
         {quick.map((a) => (
@@ -400,6 +464,7 @@ export function Bridge({ tour }: { tour: boolean }) {
         </section>
       )}
       <EngineeringTile s={s} />
+      <HangarTile s={s} />
       {(s.media || j) && <HolonetTile s={s} />}
       <ArchivesTile s={s} />
       <ArmoryTile />
