@@ -10,7 +10,8 @@
 #                 should be locked to a dispatcher with a forced command, so
 #                 the key can do nothing else (see README, "SSH steps").
 #   http          an API call. ${NAME} in the url and header values is filled
-#                 from the runner's environment and never logged.
+#                 from the runner's environment and never logged. With
+#                 `wait: false` it only starts the work and moves on.
 # Steps run in order and stop at the first failure. `retry_every: <seconds>`
 # repeats a failing run, ssh or http step until its timeout, to wait for
 # something. `show_streams: true` lists active media streams in the confirm

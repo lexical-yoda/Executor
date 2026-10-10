@@ -154,6 +154,11 @@ def measure_folder(folder: SizedFolder) -> dict:
     return {"id": folder.id, "ok": True, "error": None, "bytes": total, "files": files}
 
 
+# An http step with `wait: false` gives the request this long to be refused
+# before moving on, and the request itself this long to finish on its own.
+HTTP_SEND_GRACE = 3.0
+HTTP_SEND_TIMEOUT = 900.0
+
 SIZES_EVERY = 1800.0
 # How long a request just after a start waits for the first walk to finish.
 SIZES_FIRST_WAIT = 5.0
@@ -217,6 +222,8 @@ class Runner:
         self.docker = docker
         self.data_dir = data_dir
         self.http_transport = http_transport
+        # Requests sent by `wait: false` steps, kept referenced until they finish.
+        self._sent: set[asyncio.Task] = set()
         # The runner token and every variable an http step reads stay out of
         # child processes.
         self.secret_env = SECRET_ENV | actions.secret_names()
@@ -433,6 +440,9 @@ class Runner:
         headers = {key: fill(val) for key, val in call.headers.items()}
         # Log the configured URL, so a secret in it is never printed.
         run.say(f"$ {call.method} {call.url}")
+        if not call.wait:
+            await self._http_send(step, run, url, headers)
+            return
         try:
             async with httpx.AsyncClient(timeout=min(timeout, 60), verify=call.verify_tls,
                                          transport=self.http_transport) as client:
@@ -445,6 +455,36 @@ class Runner:
         ok = response.status_code in call.expect if call.expect else 200 <= response.status_code < 300
         if not ok:
             raise RuntimeError(f"unexpected HTTP {response.status_code}")
+
+    async def _http_send(self, step: Step, run: Run, url: str, headers: dict[str, str]) -> None:
+        """Send a request and leave it running: the work it starts carries on
+        on its own. A refusal that comes at once still fails the step."""
+        call = step.http
+        assert call is not None
+
+        async def send() -> httpx.Response:
+            async with httpx.AsyncClient(timeout=HTTP_SEND_TIMEOUT, verify=call.verify_tls,
+                                         transport=self.http_transport) as client:
+                return await client.request(call.method, url, headers=headers, json=call.json_body)
+
+        def finished(task: asyncio.Task) -> None:
+            self._sent.discard(task)
+            if not task.cancelled() and task.exception() is None:
+                log.info("%s: answered HTTP %s", step.name, task.result().status_code)
+
+        task = asyncio.create_task(send())
+        self._sent.add(task)
+        task.add_done_callback(finished)
+        done, _ = await asyncio.wait({task}, timeout=HTTP_SEND_GRACE)
+        if not done:
+            run.say("sent; not waiting for the answer")
+            return
+        if task.exception() is not None:
+            raise RuntimeError(f"request failed: {task.exception().__class__.__name__}")
+        status = task.result().status_code
+        run.say(f"HTTP {status}")
+        if status in (401, 403, 404):
+            raise RuntimeError(f"refused with HTTP {status}")
 
     async def _wait_healthy(self, step: Step, run: Run) -> None:
         name = step.wait_healthy or ""

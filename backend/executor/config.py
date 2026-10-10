@@ -394,6 +394,11 @@ class HttpCall(BaseModel):
     # Statuses that count as success. None means any 2xx.
     expect: list[int] | None = None
     verify_tls: bool = True
+    # False: send the request and move on without waiting for the answer, for
+    # calls that start long work the action need not see finish (testing every
+    # indexer, say). The step still fails if the request cannot be sent, or is
+    # refused at once (401, 403 or 404).
+    wait: bool = True
 
     model_config = {"populate_by_name": True}
 

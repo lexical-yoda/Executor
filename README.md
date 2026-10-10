@@ -407,7 +407,11 @@ of:
 
 The runner stops at the first failure and skips the rest. `retry_every`
 repeats a failing `run`, `ssh` or `http` step until its timeout, which is how
-an action waits for something, such as a host coming back after a reboot.
+an action waits for something, such as a host coming back after a reboot. An
+`http` step with `wait: false` only starts the work: it sends the request and
+moves on, failing only if the request cannot be sent or is refused at once
+(401, 403 or 404). Use it for calls that start long jobs, such as testing
+every indexer.
 Only one action runs at a time. Every run, with its full output, is appended
 to `runs.jsonl` in the runner's data directory and listed under "Recent runs".
 

@@ -256,3 +256,39 @@ def test_credentials_in_responses_and_old_history_are_hidden(tmp_path, monkeypat
     assert "apikey=<redacted>" in log and "with key <redacted>" in log
     saved = (tmp_path / "runs.jsonl").read_text()
     assert "0123456789abcdef" not in saved and "feedbeef1234" not in saved and SECRET not in saved
+
+
+def test_http_step_without_waiting_moves_on(tmp_path, monkeypatch):
+    import asyncio
+
+    from executor import runner as runner_module
+
+    monkeypatch.setattr(runner_module, "HTTP_SEND_GRACE", 0.3)
+    monkeypatch.setenv("ARR_KEY", SECRET)
+    answers = {"/slow": 200, "/bad": 400, "/denied": 401}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/slow":
+            await asyncio.sleep(2)
+        return httpx.Response(answers[request.url.path], text="results nobody waits for")
+
+    def action(path: str) -> dict:
+        return {"id": path.strip("/"), "title": path, "confirm": "sure?", "steps": [
+            {"name": "test all", "http": {"url": f"http://arr.example{path}", "wait": False,
+                                          "headers": {"X-Api-Key": "${ARR_KEY}"}}},
+            {"name": "after", "run": ["true"]},
+        ]}
+
+    actions = ActionsConfig.model_validate({"actions": [action(p) for p in answers]})
+    app = create_runner_app(actions, TOKEN, FakeDocker(), tmp_path, httpx.MockTransport(handler))
+    with TestClient(app) as c:
+        began = time.monotonic()
+        slow = wait_for(c, c.post("/runs", json={"action": "slow"}, headers=AUTH).json()["id"])
+        assert slow["status"] == "succeeded" and time.monotonic() - began < 1.8, slow
+        assert "sent; not waiting for the answer" in slow["lines"]
+        # An answer that comes at once is fine, whatever it says about the work...
+        bad = wait_for(c, c.post("/runs", json={"action": "bad"}, headers=AUTH).json()["id"])
+        assert bad["status"] == "succeeded" and "HTTP 400" in bad["lines"]
+        # ...unless the request itself was refused.
+        denied = wait_for(c, c.post("/runs", json={"action": "denied"}, headers=AUTH).json()["id"])
+        assert denied["status"] == "failed" and "refused with HTTP 401" in denied["error"]
