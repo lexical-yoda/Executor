@@ -3,7 +3,7 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { api, type MediaUser } from '../api'
 import { ago } from '../format'
 import { type MapMode, placeKey, trailHops } from '../map/types'
-import { useApp } from '../state'
+import { useApp, useClock } from '../state'
 import { LibraryCard } from '../components/Library'
 import { DownloadsCard, NowPlayingCard, placeName, RequestsCard } from '../components/Media'
 import { Empty, RowButton } from '../components/ui'
@@ -119,7 +119,8 @@ function UserPicker({
 }
 
 export function Holonet({ tour }: { tour: boolean }) {
-  const { snapshot, open, close, route, now } = useApp()
+  const { snapshot, open, close, route } = useApp()
+  const now = useClock()
   const s = snapshot!
   const j = s.jellyfin
   const media = s.media

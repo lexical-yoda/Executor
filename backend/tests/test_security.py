@@ -66,3 +66,32 @@ def test_same_origin_action_reaches_the_app():
     headers = {**ACTION_HEADERS, "Origin": "http://10.8.0.10:1977", "Sec-Fetch-Site": "same-origin"}
     # No runner is configured in this test, so passing the guard means a 503.
     assert c.post("/api/actions/x/run", content="{}", headers=headers).status_code == 503
+
+
+def test_responses_are_compressed_except_map_archives(tmp_path):
+    from fastapi.testclient import TestClient
+
+    from executor.config import Config
+    from executor.web import create_web_app
+
+    static = tmp_path / "static"
+    (static / "assets").mkdir(parents=True)
+    (static / "index.html").write_text("<!doctype html>" + "<p>deck</p>" * 400)
+    tiles = tmp_path / "tiles"
+    tiles.mkdir()
+    (tiles / "world.pmtiles").write_bytes(b"PMTiles" + b"\0" * 4000)
+    config = Config.model_validate({
+        "security": {"allowed_clients": ["10.8.0.0/24"], "allowed_hosts": ["10.8.0.10"]},
+        "machines": [], "services": [],
+    })
+    app = create_web_app(config, runner=None, static_dir=static, start_monitor=False, tiles_dir=tiles)
+    c = TestClient(app, base_url="http://10.8.0.10:1977", client=("10.8.0.2", 5000))
+    gzip = {"Accept-Encoding": "gzip"}
+    page = c.get("/", headers=gzip)
+    assert page.headers.get("content-encoding") == "gzip" and "deck" in page.text
+    archive = c.get("/tiles/world.pmtiles", headers={**gzip, "Range": "bytes=0-6"})
+    assert archive.status_code == 206 and "content-encoding" not in archive.headers
+    assert archive.content == b"PMTiles"
+    # Refused clients still get nothing at all.
+    outsider = TestClient(app, base_url="http://10.8.0.10:1977", client=("172.16.0.5", 5000))
+    assert outsider.get("/", headers=gzip).status_code == 403

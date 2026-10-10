@@ -3,7 +3,7 @@ import { useState } from 'react'
 import type { JellyfinStatus, Media as MediaData, MediaRequest, Place, QueueItem, Watching } from '../api'
 import { ago, bytes, duration, rate } from '../format'
 import { streamKey } from '../map/types'
-import { useApp } from '../state'
+import { useApp, useClock } from '../state'
 import { AttachedActions } from './ActionKit'
 import { Empty, Num } from './ui'
 
@@ -64,7 +64,7 @@ function RequestRow({ item, now, compact }: { item: MediaRequest; now: number; c
 }
 
 export function RequestsCard({ data }: { data: MediaData['requests'] }) {
-  const { now } = useApp()
+  const now = useClock()
   const c = data.counts
   return (
     <article className="edge-card card media-card">

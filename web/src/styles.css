@@ -92,7 +92,7 @@ a {
 
 .starfield {
   position: fixed;
-  inset: -50%;
+  inset: 0;
   z-index: -1;
   pointer-events: none;
   background-image:
@@ -103,18 +103,9 @@ a {
     radial-gradient(1px 1px at 260px 40px, rgba(186, 230, 253, 0.45), transparent 50%),
     radial-gradient(1.2px 1.2px at 170px 250px, rgba(254, 215, 170, 0.4), transparent 50%);
   background-size: 300px 300px;
-  animation: drift 240s linear infinite;
   opacity: 0.7;
 }
 
-@keyframes drift {
-  from {
-    transform: translate3d(0, 0, 0);
-  }
-  to {
-    transform: translate3d(-300px, -150px, 0);
-  }
-}
 
 /* ---------- Header -------------------------------------------------------- */
 
@@ -182,7 +173,6 @@ a {
   inset: 0;
   opacity: 0.18;
   background: linear-gradient(90deg, transparent, var(--tone), transparent);
-  animation: sweep 6s ease-in-out infinite;
 }
 
 .headline-up {
@@ -204,15 +194,6 @@ a {
   color: var(--tone);
 }
 
-@keyframes sweep {
-  0%,
-  100% {
-    transform: translateX(-60%);
-  }
-  50% {
-    transform: translateX(60%);
-  }
-}
 
 .live {
   position: relative;
@@ -228,8 +209,7 @@ a {
   height: 7px;
   border-radius: 50%;
   background: var(--up);
-  box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.6);
-  animation: ping 2s ease-out infinite;
+  box-shadow: 0 0 6px rgba(52, 211, 153, 0.7);
 }
 
 .live-off .live-dot {
@@ -386,19 +366,11 @@ a {
 }
 .dot-down {
   --tone: var(--down);
-  animation: ping-red 1.4s ease-out infinite;
+  box-shadow: 0 0 10px rgba(248, 113, 113, 0.6);
+  animation: ping-red 1.4s ease-out 3;
 }
 .dot-unknown {
   --tone: var(--unknown);
-}
-
-@keyframes ping {
-  0% {
-    box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.55);
-  }
-  100% {
-    box-shadow: 0 0 0 8px rgba(52, 211, 153, 0);
-  }
 }
 
 @keyframes ping-red {
@@ -1500,7 +1472,6 @@ a.tile:hover {
 
 .pulse-icon {
   color: var(--up);
-  animation: breathe 1.8s ease-in-out infinite;
 }
 
 .streams-live {
@@ -1971,14 +1942,8 @@ a.tile:hover {
 
 .speed-live {
   color: var(--up);
-  animation: breathe 2.4s ease-in-out infinite;
 }
 
-@keyframes breathe {
-  50% {
-    opacity: 0.6;
-  }
-}
 
 .queue {
   list-style: none;
@@ -2061,16 +2026,8 @@ a.tile:hover {
   background-size:
     14px 14px,
     100% 100%;
-  animation: stripes 1s linear infinite;
 }
 
-@keyframes stripes {
-  to {
-    background-position:
-      14px 0,
-      0 0;
-  }
-}
 
 /* --- Backups --- */
 .backup-grid {
@@ -4066,6 +4023,23 @@ ul.recap-list {
   outline: none;
 }
 
+/* A wide screen keeps the header (status and rings) in view above the drawer. */
+@media (min-width: 761px) {
+  .drawer {
+    top: var(--header-h, 69px);
+    border-top: 1px solid var(--border-strong);
+    border-top-left-radius: 14px;
+  }
+}
+
+.drawer-backdrop {
+  position: fixed;
+  inset: var(--header-h, 69px) 0 0 0;
+  z-index: 39;
+  background: rgba(2, 4, 8, 0.45);
+  animation: fade 0.25s ease both;
+}
+
 @keyframes drawer-in {
   from {
     transform: translateX(40px);
@@ -4091,6 +4065,9 @@ ul.recap-list {
 
 .drawer-body > div {
   display: grid;
+  /* One column that may shrink: a wide child scrolls or wraps instead of
+     stretching the whole drawer past its edge. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
 }
 
@@ -4179,7 +4156,7 @@ ul.recap-list {
 }
 
 .charts-drawer {
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .container-list {
@@ -5312,5 +5289,35 @@ ul.recap-list {
   }
   .settings-card-head .search {
     flex: 1 1 100%;
+  }
+}
+
+/* ---------- Phones: no frosted glass ------------------------------------- */
+
+/* A blur of whatever sits behind a card or bar is recomputed on every frame
+   that moves underneath it, which on a phone is every scrolled frame: a steady
+   drain for an effect that barely shows. Touch screens get near-opaque
+   surfaces instead; a Mac keeps the glass. */
+@media (pointer: coarse) {
+  :root {
+    --panel: rgba(11, 16, 28, 0.96);
+  }
+
+  .card,
+  .header,
+  .tabs,
+  .tabbar,
+  .hero-badge {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .header,
+  .tabs {
+    background: rgba(4, 6, 12, 0.97);
+  }
+
+  .tabbar {
+    background: rgba(6, 9, 18, 0.98);
   }
 }

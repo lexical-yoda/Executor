@@ -1,4 +1,4 @@
-import { ExternalLink, Images, Loader2 } from 'lucide-react'
+import { ExternalLink, Hourglass, Images, Loader2 } from 'lucide-react'
 import { type KeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { api, type DayCount, type PhotoHistory, type PhotoJob, type PhotoLibrary, type Photos } from '../api'
 import { bytes, pct } from '../format'
@@ -31,7 +31,7 @@ function JobsPill({ lib }: { lib: PhotoLibrary }) {
   if (lib.backlog > 0)
     return (
       <span className="backup-pill bk-running">
-        <Loader2 size={11} className="spin" />
+        <Hourglass size={11} />
         Processing {lib.backlog.toLocaleString()}
       </span>
     )

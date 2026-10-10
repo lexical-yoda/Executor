@@ -1,9 +1,9 @@
 import { Archive, ArrowDown, CalendarDays, Cpu, Map as MapIcon, Radio, ScrollText, Thermometer, Zap } from 'lucide-react'
 import { lazy, Suspense, useMemo } from 'react'
 import type { MachineStatus, Snapshot, Status } from '../api'
-import { ago, bytes, pct, rate } from '../format'
+import { ago, bytes, machineState, pct, rate } from '../format'
 import { streamKey } from '../map/types'
-import { useActions, useApp } from '../state'
+import { useActions, useApp, useClock } from '../state'
 import { runClock, runSeconds } from '../components/ActionKit'
 import { BackupPill } from '../components/Backups'
 import { gb } from '../components/Edge'
@@ -17,7 +17,6 @@ import { Empty, Num, RowButton, Tile } from '../components/ui'
 const MapView = lazy(() => import('../map/MapView'))
 
 // Machines that come and go all day are listed last and never alarm.
-const QUIET = new Set(['laptop', 'phone'])
 
 export function nodeStatuses(s: Snapshot | null): Record<string, Status> {
   return Object.fromEntries((s?.machines ?? []).map((m) => [m.id, m.status]))
@@ -33,12 +32,14 @@ function MiniBar({ value }: { value: number | null }) {
 }
 
 function MachineRow({ m }: { m: MachineStatus }) {
-  const { open, now } = useApp()
+  const { open } = useApp()
+  const now = useClock()
   const Icon = ICONS[m.icon]
   const s = m.stats
+  const state = machineState(m)
   return (
     <RowButton className="machine-row" onClick={() => open('machine', m.id)}>
-      <StatusDot status={m.status} />
+      <StatusDot status={state.status} label={state.label} />
       <Icon size={14} className="muted" />
       <span className="machine-row-name">{m.name}</span>
       {s ? (
@@ -60,7 +61,11 @@ function MachineRow({ m }: { m: MachineStatus }) {
         </span>
       ) : (
         <span className="small muted">
-          {m.status === 'up' ? (m.latency_ms != null ? `${Math.round(m.latency_ms)} ms` : 'online') : m.last_seen ? `seen ${ago(m.last_seen, now)}` : 'offline'}
+          {m.status === 'up'
+            ? m.latency_ms != null
+              ? `${Math.round(m.latency_ms)} ms`
+              : 'online'
+            : `${m.away ? 'away · ' : ''}${m.last_seen ? `seen ${ago(m.last_seen, now)}` : 'offline'}`}
         </span>
       )}
     </RowButton>
@@ -69,7 +74,7 @@ function MachineRow({ m }: { m: MachineStatus }) {
 
 function EngineeringTile({ s }: { s: Snapshot }) {
   const { showDeck, open } = useApp()
-  const machines = [...s.machines].sort((a, b) => Number(QUIET.has(a.icon)) - Number(QUIET.has(b.icon)))
+  const machines = [...s.machines].sort((a, b) => Number(a.roaming) - Number(b.roaming))
   const down = s.services.filter((x) => x.status !== 'up' && x.status !== 'unknown')
   const cert = s.edge?.certificates.reduce<number | null>(
     (min, c) => (c.days_left != null && (min == null || c.days_left < min) ? c.days_left : min),
@@ -212,7 +217,8 @@ function HolonetTile({ s }: { s: Snapshot }) {
 }
 
 function ArchivesTile({ s }: { s: Snapshot }) {
-  const { showDeck, open, now } = useApp()
+  const { showDeck, open } = useApp()
+  const now = useClock()
   const b = s.backups
   const lib = s.photos?.library
   if (!b && !lib) return null
@@ -270,7 +276,8 @@ function ArchivesTile({ s }: { s: Snapshot }) {
 }
 
 function ArmoryTile() {
-  const { showDeck, open, now } = useApp()
+  const { showDeck, open } = useApp()
+  const now = useClock()
   const { actions, runs, busy } = useActions()
   const running = busy ? runs.find((r) => r.id === busy) : null
   const recentIds = [...new Set(runs.map((r) => r.action))]

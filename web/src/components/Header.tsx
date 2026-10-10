@@ -1,16 +1,29 @@
 import { Eye, EyeOff, Play, Settings2, Square } from 'lucide-react'
+import { useEffect, useRef } from 'react'
 import type { Alert } from '../alerts'
 import { statusLine } from '../alerts'
 import { ago } from '../format'
 import { DECK_INFO, DECKS } from '../route'
-import { useApp } from '../state'
+import { useApp, useClock } from '../state'
 import { RunningChip } from './ActionKit'
 
-function Meter({ label, value, total, known = true }: { label: string; value: number; total: number; known?: boolean }) {
+function Meter({
+  label,
+  value,
+  total,
+  known = true,
+  note,
+}: {
+  label: string
+  value: number
+  total: number
+  known?: boolean
+  note?: string
+}) {
   const ratio = known && total ? value / total : 0
   const tone = !known ? 'unknown' : ratio === 1 ? 'up' : ratio >= 0.8 ? 'degraded' : 'down'
   return (
-    <div className={`meter meter-${tone}`} title={`${label}: ${known ? `${value} of ${total}` : 'unknown'}`}>
+    <div className={`meter meter-${tone}`} title={`${label}: ${known ? `${value} of ${total}` : 'unknown'}${note ? ` · ${note}` : ''}`}>
       <svg viewBox="0 0 36 36" className="meter-ring" aria-hidden="true">
         <circle cx="18" cy="18" r="15.5" className="meter-track" />
         <circle cx="18" cy="18" r="15.5" className="meter-value" strokeDasharray={`${(ratio * 97.4).toFixed(1)} 97.4`} />
@@ -36,13 +49,24 @@ export function Header({
   attract: boolean
   toggleAttract: () => void
 }) {
-  const { snapshot, error, updatedAt, now, stale, open, route, showDeck } = useApp()
+  const { snapshot, error, updatedAt, stale, open, route, showDeck } = useApp()
+  const now = useClock()
   const s = snapshot?.summary
   const connected = !!snapshot && !error && !stale
   const line = snapshot ? statusLine(alerts, connected) : { tone: 'unknown' as const, text: error ? 'Cannot reach Executor' : 'Establishing link…' }
 
+  // The drawer opens below the header on a wide screen; it needs the header's height.
+  const bar = useRef<HTMLElement>(null)
+  useEffect(() => {
+    const el = bar.current
+    if (!el) return
+    const sized = new ResizeObserver(() => document.documentElement.style.setProperty('--header-h', `${el.offsetHeight}px`))
+    sized.observe(el)
+    return () => sized.disconnect()
+  }, [])
+
   return (
-    <header className="header">
+    <header className="header" ref={bar}>
       <div className="brand">
         <svg viewBox="0 0 32 32" className="brand-mark" aria-hidden="true">
           <path d="M16 3 29 27H3Z" />
@@ -73,7 +97,13 @@ export function Header({
         <RunningChip />
         <div className="meters">
           <Meter label="Services" value={s?.services_up ?? 0} total={s?.services_total ?? 0} known={!!s} />
-          <Meter label="Machines" value={s?.machines_up ?? 0} total={s?.machines_total ?? 0} known={!!s} />
+          <Meter
+            label="Machines"
+            value={s?.machines_up ?? 0}
+            total={s?.machines_total ?? 0}
+            known={!!s}
+            note={s?.machines_away ? `${s.machines_away} away` : undefined}
+          />
           <Meter label="Containers" value={s?.containers_running ?? 0} total={s?.containers_total ?? 0} known={!!s?.containers_known} />
         </div>
         {snapshot?.editable && (

@@ -154,6 +154,37 @@ def measure_folder(folder: SizedFolder) -> dict:
     return {"id": folder.id, "ok": True, "error": None, "bytes": total, "files": files}
 
 
+SIZES_EVERY = 1800.0
+# How long a request just after a start waits for the first walk to finish.
+SIZES_FIRST_WAIT = 5.0
+
+
+class FolderSizes:
+    """Sizes of the folders under `sizes:`, measured in the background. A cold
+    walk of a large library (100k files) takes longer than the web's request
+    timeout, so a request only ever reads the last result."""
+
+    def __init__(self, folders: list[SizedFolder], every: float = SIZES_EVERY) -> None:
+        self.folders = folders
+        self.every = every
+        self.results: dict[str, dict] = {}
+        self.first = asyncio.Event()
+
+    def current(self) -> list[dict]:
+        return [self.results.get(f.id) or {"id": f.id, "ok": False, "error": "still measuring",
+                                           "bytes": None, "files": None} for f in self.folders]
+
+    async def run(self) -> None:
+        while True:
+            for folder in self.folders:
+                try:
+                    self.results[folder.id] = await asyncio.to_thread(measure_folder, folder)
+                except Exception as exc:  # noqa: BLE001 - one bad folder must not stop the others
+                    log.warning("measuring %s failed: %s", folder.id, exc)
+            self.first.set()
+            await asyncio.sleep(self.every)
+
+
 COMPOSE_FILES = ("compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml")
 
 
@@ -434,10 +465,14 @@ class Runner:
 def create_runner_app(actions: ActionsConfig, token: str, docker: DockerAPI, data_dir: Path | None,
                       http_transport: httpx.AsyncBaseTransport | None = None) -> FastAPI:
     runner = Runner(actions, docker, data_dir, http_transport)
+    folder_sizes = FolderSizes(actions.sizes)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
+        measuring = asyncio.create_task(folder_sizes.run()) if actions.sizes else None
         yield
+        if measuring:
+            measuring.cancel()
         await docker.close()
 
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
@@ -466,19 +501,16 @@ def create_runner_app(actions: ActionsConfig, token: str, docker: DockerAPI, dat
     async def files() -> list[dict]:
         return await asyncio.gather(*(asyncio.to_thread(describe_folder, f) for f in actions.files))
 
-    measured: dict[str, tuple[float, dict]] = {}
-
     @app.get("/sizes", dependencies=guarded)
     async def sizes() -> list[dict]:
-        """Sizes of the folders under `sizes:`, measured at most every ten minutes."""
-        async def one(folder: SizedFolder) -> dict:
-            cached = measured.get(folder.id)
-            if cached and time.monotonic() - cached[0] < 600:
-                return cached[1]
-            result = await asyncio.to_thread(measure_folder, folder)
-            measured[folder.id] = (time.monotonic(), result)
-            return result
-        return list(await asyncio.gather(*(one(f) for f in actions.sizes)))
+        """Sizes of the folders under `sizes:`, as last measured (every half hour)."""
+        if actions.sizes and not folder_sizes.first.is_set():
+            # Just after a start, give the first walk a moment, but never long.
+            try:
+                await asyncio.wait_for(asyncio.shield(folder_sizes.first.wait()), SIZES_FIRST_WAIT)
+            except asyncio.TimeoutError:
+                pass
+        return folder_sizes.current()
 
     @app.get("/stacks", dependencies=guarded)
     async def stacks() -> dict:

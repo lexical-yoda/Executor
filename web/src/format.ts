@@ -1,3 +1,5 @@
+import type { Status } from './api'
+
 export function ago(iso: string | null | number, now: number): string {
   if (iso === null) return 'never'
   const then = typeof iso === 'number' ? iso : Date.parse(iso)
@@ -30,6 +32,11 @@ export const statusLabel: Record<string, string> = {
   down: 'Down',
   degraded: 'Degraded',
   unknown: 'Unknown',
+}
+
+/** How a machine shows: a roaming device (laptop, phone) that is offline is away, not down. */
+export function machineState(m: { status: Status; away?: boolean }): { status: Status; label: string } {
+  return m.away ? { status: 'unknown', label: 'Away' } : { status: m.status, label: statusLabel[m.status] }
 }
 
 export function rate(bytesPerSecond: number | null): string {
@@ -68,4 +75,9 @@ export function until(ms: number, now: number): string {
   const seconds = Math.round((ms - now) / 1000)
   if (seconds <= 60) return 'due now'
   return `in ${duration(seconds)}`
+}
+
+/** Who asked for a run: the machine's name when its address is a known one. */
+export function requester(address: string, machines: { name: string; address: string | null }[] | undefined): string {
+  return machines?.find((m) => m.address === address)?.name ?? address
 }

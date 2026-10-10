@@ -750,10 +750,20 @@ class Monitor:
                 sizes = await self.runner.sizes()
             except Exception as exc:  # noqa: BLE001 - counts still stand without sizes
                 log.warning("runner folder sizes failed: %s", exc)
+        before = {lib["id"]: lib for lib in (self.library or {}).get("libraries") or []}
+        fresh: set[str] = set()
+        carried = False
         for library in libraries:
             measured = sizes.get(folders.get(library["name"], ""))
-            library["bytes"] = measured["bytes"] if measured and measured.get("ok") else None
-            library["files"] = measured["files"] if measured and measured.get("ok") else None
+            if measured and measured.get("ok"):
+                library["bytes"], library["files"] = measured["bytes"], measured["files"]
+                fresh.add(library["id"])
+            else:
+                # A runner restart or a slow walk: show the last size known rather than a gap.
+                old = before.get(library["id"]) or {}
+                library["bytes"] = old.get("bytes") if old else self._last_daily(f"library_bytes:{library['id']}")
+                library["files"] = old.get("files")
+                carried = carried or library["bytes"] is not None
         totals = {k: sum(lib.get(k) or 0 for lib in libraries)
                   for k in ("movies", "series", "episodes", "collections")}
         sized = [lib["bytes"] for lib in libraries if lib["bytes"] is not None]
@@ -763,12 +773,24 @@ class Monitor:
         self.library_checked = time.time()
         if self.store:
             today = date.today().isoformat()
-            for key in ("movies", "series", "episodes", "bytes"):
-                if totals[key] is not None:
-                    self._safely(self.store.set_daily, today, f"library_{key}", totals[key])
+            for key in ("movies", "series", "episodes"):
+                self._safely(self.store.set_daily, today, f"library_{key}", totals[key])
+            # Sizes are only recorded when measured just now, never carried forward.
+            if fresh and not carried:
+                self._safely(self.store.set_daily, today, "library_bytes", totals["bytes"])
             for library in libraries:
-                if library["bytes"] is not None:
+                if library["id"] in fresh:
                     self._safely(self.store.set_daily, today, f"library_bytes:{library['id']}", library["bytes"])
+
+    def _last_daily(self, key: str) -> float | None:
+        """The most recent daily level recorded for a key in the last month."""
+        if not self.store:
+            return None
+        try:
+            series = self.store.daily_series(key, (date.today() - timedelta(days=31)).isoformat())
+        except Exception:  # noqa: BLE001
+            return None
+        return series[-1][1] if series else None
 
     def library_poster_ids(self) -> set[str]:
         """Items whose posters the page may ask for: the recent additions only."""
@@ -1016,7 +1038,7 @@ class Monitor:
     def _machine(self, machine: Machine) -> dict:
         base = {"id": machine.id, "name": machine.name, "role": machine.role,
                 "address": machine.address, "icon": machine.icon, "details": None,
-                "monitored": bool(machine.beszel and self.beszel),
+                "monitored": bool(machine.beszel and self.beszel), "roaming": machine.roams,
                 "stats": self.machine_stats.get(machine.id),
                 "spark": self.sparklines.get(machine.id)}
         if machine.local:
@@ -1027,8 +1049,8 @@ class Monitor:
         if probe is None:
             return {**base, "status": "unknown", "latency_ms": None, "error": None,
                     "last_seen": None}
-        return {**base, "status": "up" if probe.ok else "down", "latency_ms": probe.latency_ms,
-                "error": probe.error, "last_seen": self.last_seen.get(machine.id)}
+        return {**base, "status": "up" if probe.ok else "down", "away": machine.roams and not probe.ok,
+                "latency_ms": probe.latency_ms, "error": probe.error, "last_seen": self.last_seen.get(machine.id)}
 
     def _service(self, service: Service) -> dict:
         override = self.overrides.get(service.id)
@@ -1075,7 +1097,9 @@ class Monitor:
                 "services_up": sum(s["status"] == "up" for s in services),
                 "services_total": len(services),
                 "machines_up": sum(m["status"] == "up" for m in machines),
-                "machines_total": len(machines),
+                # A laptop or phone that is away is not missing: it is left out of the total.
+                "machines_total": sum(not m.get("away") for m in machines),
+                "machines_away": sum(bool(m.get("away")) for m in machines),
                 "containers_running": sum(c["state"] == "running" for c in containers),
                 "containers_total": len(containers),
                 "containers_unhealthy": sum(c.get("health") == "unhealthy" for c in containers),

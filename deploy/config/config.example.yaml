@@ -192,7 +192,8 @@ machines:
     name: Phone
     role: Phone
     address: 10.8.0.3
-    icon: phone
+    icon: phone          # laptops and phones roam: offline means away, no alert;
+                         # set roaming: true or false to override
   - id: desktop
     name: Desktop
     role: Gaming PC, LAN only

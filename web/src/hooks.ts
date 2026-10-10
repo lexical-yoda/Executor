@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 /** Poll an async source on an interval; pauses while the tab is hidden. */
 export function usePoll<T>(load: () => Promise<T>, intervalMs: number) {
@@ -82,4 +82,12 @@ export function useNarrow(width = 760): boolean {
     return () => media.removeEventListener('change', update)
   }, [query])
   return narrow
+}
+
+/** The previous value while the new one has the same content, so effects that
+ *  depend on it do not re-run when a caller rebuilds an equal object. */
+export function useStable<T>(value: T): T {
+  const key = JSON.stringify(value) ?? ''
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  return useMemo(() => value, [key])
 }

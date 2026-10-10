@@ -31,7 +31,10 @@ function AlertsDrawer() {
       <ul className="alert-list">
         {alerts.map((a) => (
           <li key={a.key}>
-            <RowButton className={`alert-item alert-${a.level}`} onClick={() => (a.ref ? openRef(a.ref, a.deck) : showDeck(a.deck))}>
+            <RowButton
+              className={`alert-item alert-${a.level}`}
+              onClick={() => (a.ref ? openRef(a.ref, a.deck) : showDeck(a.deck))}
+            >
               <span className={`dot dot-${a.level === 'bad' ? 'down' : 'degraded'}`} />
               <span className="alert-text">
                 <span>{a.title}</span>
@@ -129,13 +132,17 @@ export function DrawerHost() {
   // "focus" only tells the settings page which service to show; it has no drawer.
   if (!d || d.kind === 'focus') return null
   return (
-    <aside className="drawer" ref={panel} tabIndex={-1} role="dialog" aria-label="Details">
-      <button type="button" className="icon-btn drawer-close" onClick={close} aria-label="Close details">
-        <X size={18} />
-      </button>
-      <div className="drawer-body" key={`${d.kind}:${d.id}`}>
-        <Suspense fallback={<p className="muted small">Loading…</p>}>{content(d)}</Suspense>
-      </div>
-    </aside>
+    <>
+      {/* The page behind dims, and a click on it closes the drawer. */}
+      <div className="drawer-backdrop" onClick={close} aria-hidden="true" />
+      <aside className="drawer" ref={panel} tabIndex={-1} role="dialog" aria-label="Details">
+        <button type="button" className="icon-btn drawer-close" onClick={close} aria-label="Close details">
+          <X size={18} />
+        </button>
+        <div className="drawer-body" key={`${d.kind}:${d.id}`}>
+          <Suspense fallback={<p className="muted small">Loading…</p>}>{content(d)}</Suspense>
+        </div>
+      </aside>
+    </>
   )
 }

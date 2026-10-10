@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { api, type MediaUser, type Place, type PlaceGroup, type Sighting } from '../api'
 import { ago, bytes, duration } from '../format'
 import { placeKey, streamKey } from '../map/types'
-import { useApp } from '../state'
+import { useApp, useClock } from '../state'
 import { AttachedActions } from './ActionKit'
 import { placeName, Poster, queueTone, seasons } from './Media'
 import { Empty, Facts, RowButton, SourceNote } from './ui'
@@ -202,7 +202,8 @@ export function RouteDrawer() {
 }
 
 export function PlaceDrawer({ id }: { id: string }) {
-  const { snapshot, open, now } = useApp()
+  const { snapshot, open } = useApp()
+  const now = useClock()
   const [lat, lon] = id.split(',').map(Number)
   const { data, error } = useOnce(() => api.mediaPlaces(90), [id])
   const place: PlaceGroup | undefined = data?.places.find((p) => placeKey(p) === id)
@@ -304,7 +305,8 @@ export function UserDrawer({ id }: { id: string }) {
 }
 
 export function RequestDrawer({ id }: { id: string }) {
-  const { snapshot, now } = useApp()
+  const { snapshot } = useApp()
+  const now = useClock()
   const requests = snapshot?.media?.requests
   const item = [...(requests?.pending ?? []), ...(requests?.processing ?? [])].find((r) => String(r.id) === id)
   if (!item) return <Empty>This request is no longer pending or on its way; it may be available now.</Empty>

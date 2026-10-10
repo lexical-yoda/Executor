@@ -1,12 +1,12 @@
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { type ActionInfo, api, ApiError, type RunSummary, type Snapshot } from './api'
+import { useNow } from './hooks'
 import { type Deck, type DrawerRef, type Route, useRoute } from './route'
 
 interface AppState {
   snapshot: Snapshot | null
   error: string | null
   updatedAt: number | null
-  now: number
   /** True when the last good update is too old to trust. */
   stale: boolean
   /** Fetch the snapshot again now (after a change made from the page). */
@@ -21,6 +21,22 @@ interface AppState {
 
 const AppContext = createContext<AppState | null>(null)
 
+// The page's clock lives apart from the rest of the state: relative times
+// ("5m ago") need it, but ticking the whole app's state would re-render every
+// panel on each tick. A quarter-minute is fine for "ago" labels; the few views
+// that count seconds (a running action) keep their own faster clock.
+export const CLOCK_MS = 15_000
+const ClockContext = createContext<number>(Date.now())
+
+export function useClock(): number {
+  return useContext(ClockContext)
+}
+
+export function ClockProvider({ children }: { children: ReactNode }) {
+  const now = useNow(CLOCK_MS)
+  return <ClockContext.Provider value={now}>{children}</ClockContext.Provider>
+}
+
 export function useApp(): AppState {
   const value = useContext(AppContext)
   if (!value) throw new Error('useApp outside AppProvider')
@@ -31,14 +47,15 @@ export function AppProvider({
   snapshot,
   error,
   updatedAt,
-  now,
+  staleAfter,
   reload,
   children,
 }: {
   snapshot: Snapshot | null
   error: string | null
   updatedAt: number | null
-  now: number
+  /** How old the last good update may get before it no longer counts as live. */
+  staleAfter: number
   reload: () => void
   children: ReactNode
 }) {
@@ -56,11 +73,18 @@ export function AppProvider({
     [go],
   )
   const close = useCallback(() => go({ deck: routeRef.current.deck, drawer: null }), [go])
-  const stale = updatedAt !== null && now - updatedAt > 20_000
+  // Goes stale on a timer of its own, so nothing re-renders until it does.
+  const [stale, setStale] = useState(false)
+  useEffect(() => {
+    setStale(false)
+    if (updatedAt === null) return
+    const id = window.setTimeout(() => setStale(true), Math.max(0, updatedAt + staleAfter - Date.now()))
+    return () => window.clearTimeout(id)
+  }, [updatedAt, staleAfter])
 
   const value = useMemo(
-    () => ({ snapshot, error, updatedAt, now, stale, reload, route, go, showDeck, open, openRef, close }),
-    [snapshot, error, updatedAt, now, stale, reload, route, go, showDeck, open, openRef, close],
+    () => ({ snapshot, error, updatedAt, stale, reload, route, go, showDeck, open, openRef, close }),
+    [snapshot, error, updatedAt, stale, reload, route, go, showDeck, open, openRef, close],
   )
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }

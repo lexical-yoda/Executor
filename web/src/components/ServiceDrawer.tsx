@@ -2,7 +2,7 @@ import { ExternalLink, Loader2, Settings2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api, type ServiceHistory } from '../api'
 import { ago, latency } from '../format'
-import { useApp } from '../state'
+import { useApp, useClock } from '../state'
 import { AttachedActions } from './ActionKit'
 import { containerTone } from './Services'
 import { StatusPill } from './StatusDot'
@@ -15,32 +15,53 @@ const SPANS = [
 ]
 
 /** Uptime as a strip of bars, one per bucket, coloured by the worst result in it. */
+// At most this many bars, so each stays a visible width on a phone.
+const MAX_BARS = 96
+
 function UptimeBars({ history }: { history: ServiceHistory }) {
   const { buckets, bucket_s, hours } = history
   const slots = Math.ceil((hours * 3600) / bucket_s)
+  const per = Math.max(1, Math.ceil(slots / MAX_BARS))
+  const span = bucket_s * per
   const end = Math.floor(Date.now() / 1000 / bucket_s) * bucket_s
-  const byTime = new Map(buckets.map((b) => [b.t, b]))
-  const cells = Array.from({ length: slots }, (_, i) => byTime.get(end - (slots - 1 - i) * bucket_s))
-  const maxMs = Math.max(1, ...buckets.map((b) => b.ms ?? 0))
+  const first = end - (slots - 1) * bucket_s
+  // Fold neighbouring buckets into one bar: counts add up, response time averages.
+  const bars = Array.from({ length: Math.ceil(slots / per) }, () => ({ up: 0, degraded: 0, down: 0, ms: 0, timed: 0, seen: false }))
+  for (const b of buckets) {
+    const at = Math.floor((b.t - first) / bucket_s / per)
+    const bar = bars[at]
+    if (!bar) continue
+    bar.seen = true
+    bar.up += b.up
+    bar.degraded += b.degraded
+    bar.down += b.down
+    if (b.ms != null) {
+      bar.ms += b.ms
+      bar.timed += 1
+    }
+  }
+  const avg = (bar: (typeof bars)[number]) => (bar.timed ? bar.ms / bar.timed : null)
+  const maxMs = Math.max(1, ...bars.map((bar) => avg(bar) ?? 0))
   return (
     <div className="uptime">
       <div className="uptime-bars" aria-label="Checks over time, oldest on the left">
-        {cells.map((b, i) => {
-          const tone = !b ? 'none' : b.down ? 'down' : b.degraded ? 'degraded' : 'up'
-          const when = new Date((end - (slots - 1 - i) * bucket_s) * 1000).toLocaleString(undefined, {
+        {bars.map((bar, i) => {
+          const tone = !bar.seen ? 'none' : bar.down ? 'down' : bar.degraded ? 'degraded' : 'up'
+          const when = new Date((first + i * span) * 1000).toLocaleString(undefined, {
             day: 'numeric',
             month: 'short',
             hour: '2-digit',
             minute: '2-digit',
           })
+          const ms = avg(bar)
           return (
             <span
               key={i}
               className={`uptime-cell u-${tone}`}
-              style={{ ['--h' as string]: b?.ms != null ? `${20 + (b.ms / maxMs) * 80}%` : '100%' }}
+              style={{ ['--h' as string]: ms != null ? `${20 + (ms / maxMs) * 80}%` : '100%' }}
               title={
-                b
-                  ? `${when} · ${b.up} up${b.degraded ? `, ${b.degraded} degraded` : ''}${b.down ? `, ${b.down} down` : ''}${b.ms != null ? ` · ${latency(b.ms)}` : ''}`
+                bar.seen
+                  ? `${when} · ${bar.up} up${bar.degraded ? `, ${bar.degraded} degraded` : ''}${bar.down ? `, ${bar.down} down` : ''}${ms != null ? ` · ${latency(ms)}` : ''}`
                   : `${when} · no checks`
               }
             />
@@ -57,7 +78,8 @@ function UptimeBars({ history }: { history: ServiceHistory }) {
 }
 
 export function ServiceDrawer({ id }: { id: string }) {
-  const { snapshot, now, go } = useApp()
+  const { snapshot, go } = useApp()
+  const now = useClock()
   const service = snapshot?.services.find((s) => s.id === id)
   const [hours, setHours] = useState(24)
   const [history, setHistory] = useState<ServiceHistory | null>(null)

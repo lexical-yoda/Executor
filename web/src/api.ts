@@ -107,6 +107,9 @@ export interface MachineStatus {
   error: string | null
   last_seen: string | null
   details: MachineDetails | null
+  /** A laptop or phone: offline means away, not down. */
+  roaming: boolean
+  away?: boolean
 }
 
 export interface Snapshot {
@@ -119,7 +122,9 @@ export interface Snapshot {
     services_up: number
     services_total: number
     machines_up: number
+    /** Machines that should be up: roaming devices that are away are left out. */
     machines_total: number
+    machines_away?: number
     containers_running: number
     containers_total: number
     containers_unhealthy: number

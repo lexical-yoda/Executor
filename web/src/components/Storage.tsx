@@ -1,7 +1,7 @@
 import { AlertTriangle, Database, HardDrive, Info, Thermometer } from 'lucide-react'
 import type { Disk, NasAlert, Pool, TrueNASHealth } from '../api'
 import { ago, bytes, duration } from '../format'
-import { useApp } from '../state'
+import { useApp, useClock } from '../state'
 import { Empty, Facts, RowButton, SourceNote } from './ui'
 
 /** How worrying a disk temperature is: hard drives run cooler than SSDs. */
@@ -47,7 +47,8 @@ function TempChip({ disk }: { disk: Disk }) {
 }
 
 function PoolCard({ pool, disks, index }: { pool: Pool; disks: Disk[]; index: number }) {
-  const { open, now } = useApp()
+  const { open } = useApp()
+  const now = useClock()
   const tone = poolTone(pool)
   const layout = pool.vdevs
     .filter((v) => v.role === 'data')
@@ -116,7 +117,8 @@ function AlertList({ alerts, now }: { alerts: NasAlert[]; now: number }) {
 }
 
 export function Storage({ health }: { health: TrueNASHealth }) {
-  const { open, now } = useApp()
+  const { open } = useApp()
+  const now = useClock()
   const disks = health.disks ?? []
   const loose = disks.filter((d) => !d.pool)
   const alerts = health.alerts ?? []
@@ -193,7 +195,8 @@ function DiskRow({ disk }: { disk: Disk }) {
 }
 
 export function PoolDrawer({ name }: { name: string }) {
-  const { snapshot, now } = useApp()
+  const { snapshot } = useApp()
+  const now = useClock()
   const health = snapshot?.truenas
   const pool = health?.pools.find((p) => p.name === name)
   if (!health || !pool) return <Empty>No such pool.</Empty>
@@ -303,7 +306,8 @@ export function DiskDrawer({ name }: { name: string }) {
 }
 
 export function NasDrawer() {
-  const { snapshot, now } = useApp()
+  const { snapshot } = useApp()
+  const now = useClock()
   const health = snapshot?.truenas
   if (!health) return <Empty>TrueNAS is not configured.</Empty>
   return (

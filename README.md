@@ -63,7 +63,15 @@ containers. The first container is the primary one.
 | Stack stopped | With stack discovery: the stack's containers were removed but its folder is still there (grey, no alert) |
 
 Machines are pinged over ICMP. The machine marked `local: true` is always up
-and reports load, memory and uptime from `/proc`.
+and reports load, memory and uptime from `/proc`. Laptops and phones roam: when
+one is offline it shows as away, raises no alert and is left out of the
+machines total. Set `roaming: true` or `false` on a machine to override what
+its icon implies.
+
+The page is kept light on phones: the map only animates while someone is
+streaming and it is on screen, nothing loops forever, touch screens get solid
+surfaces instead of blurred glass, the status refreshes every 15 seconds
+instead of 5, and every response is compressed.
 
 ### Stack discovery (optional)
 

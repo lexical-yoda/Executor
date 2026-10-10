@@ -1,8 +1,8 @@
 import { Loader2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { api, type HistoryRange, type MachineHistory } from '../api'
-import { ago, duration, gib, latency, pct, rate } from '../format'
-import { useApp } from '../state'
+import { ago, duration, gib, latency, machineState, pct, rate } from '../format'
+import { useApp, useClock } from '../state'
 import { AttachedActions } from './ActionKit'
 import { Chart } from './Chart'
 import { StatusPill } from './StatusDot'
@@ -18,7 +18,8 @@ const RANGES: { id: HistoryRange; label: string }[] = [
 ]
 
 export function MachineDrawer({ id }: { id: string }) {
-  const { snapshot, now } = useApp()
+  const { snapshot } = useApp()
+  const now = useClock()
   const machine = snapshot?.machines.find((m) => m.id === id)
   const [range, setRange] = useState<HistoryRange>('24h')
   const [data, setData] = useState<MachineHistory | null>(null)
@@ -89,7 +90,7 @@ export function MachineDrawer({ id }: { id: string }) {
   return (
     <div>
       <div className="drawer-kicker">
-        Machine <StatusPill status={machine.status} />
+        Machine <StatusPill {...machineState(machine)} />
       </div>
       <h3 className="drawer-title">{machine.name}</h3>
       <p className="muted">{machine.role}</p>
@@ -117,7 +118,7 @@ export function MachineDrawer({ id }: { id: string }) {
               ? s.pools.map((p) => `${p.name} ${gib(p.used_gib)} / ${gib(p.total_gib)} (${p.health ?? '?'})`).join(' · ')
               : null,
           ],
-          ['Error', machine.status === 'down' ? machine.error : null],
+          ['Error', machine.status === 'down' && !machine.away ? machine.error : null],
         ]}
       />
       <AttachedActions target={machine.id} />

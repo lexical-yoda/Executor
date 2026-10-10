@@ -1,5 +1,6 @@
 import asyncio
 import os
+import time
 from datetime import date, timedelta
 
 import httpx
@@ -120,3 +121,57 @@ def test_folder_sizes_skip_symlinks_and_report_only_numbers(tmp_path):
         assert c.get("/sizes").status_code == 401
         body = c.get("/sizes", headers={"Authorization": f"Bearer {TOKEN}"}).json()
     assert body == [{"id": "lib", "ok": True, "error": None, "bytes": 150, "files": 2}]
+
+
+def test_library_keeps_the_last_size_while_the_runner_measures(tmp_path):
+    store = Store(tmp_path / "executor.db")
+    jellyfin = Jellyfin("http://media.example:8096", "key", transport=httpx.MockTransport(jellyfin_handler))
+    monitor = Monitor(CONFIG, FakeRunner(), store=store, jellyfin=jellyfin)  # type: ignore[arg-type]
+    asyncio.run(monitor.poll_library())
+
+    class Measuring:
+        async def sizes(self):
+            return {"films": {"id": "films", "ok": False, "error": "still measuring", "bytes": None, "files": None}}
+
+    monitor.runner = Measuring()  # type: ignore[assignment]
+    asyncio.run(monitor.poll_library())
+    films = monitor.library["libraries"][0]
+    assert (films["bytes"], films["files"]) == (3000, 12)
+    # A size carried forward is shown but never recorded as a new day's level.
+    today = date.today().isoformat()
+    assert store.daily_series("library_bytes", today) == [(today, 3000)]
+
+    restarted = Monitor(CONFIG, Measuring(), store=store, jellyfin=jellyfin)  # type: ignore[arg-type]
+    asyncio.run(restarted.poll_library())
+    assert restarted.library["libraries"][0]["bytes"] == 3000
+
+
+def test_runner_answers_sizes_without_waiting_for_a_slow_walk(tmp_path, monkeypatch):
+    import threading
+    from executor import runner as runner_module
+
+    release = threading.Event()
+
+    def slow(folder):
+        release.wait(5)
+        return {"id": folder.id, "ok": True, "error": None, "bytes": 1, "files": 1}
+
+    monkeypatch.setattr(runner_module, "measure_folder", slow)
+    monkeypatch.setattr(runner_module, "SIZES_FIRST_WAIT", 0.2)
+
+    class Docker:
+        async def close(self):
+            pass
+
+    actions = ActionsConfig.model_validate({"sizes": [{"id": "lib", "path": str(tmp_path)}]})
+    headers = {"Authorization": f"Bearer {TOKEN}"}
+    with TestClient(create_runner_app(actions, TOKEN, Docker(), None)) as c:  # type: ignore[arg-type]
+        began = time.monotonic()
+        body = c.get("/sizes", headers=headers).json()
+        assert time.monotonic() - began < 2
+        assert body == [{"id": "lib", "ok": False, "error": "still measuring", "bytes": None, "files": None}]
+        release.set()
+        deadline = time.monotonic() + 5
+        while c.get("/sizes", headers=headers).json()[0]["ok"] is False and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert c.get("/sizes", headers=headers).json()[0]["bytes"] == 1

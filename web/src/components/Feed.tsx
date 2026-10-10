@@ -20,7 +20,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api, type LogEvent } from '../api'
 import { ago } from '../format'
 import { parseRef } from '../route'
-import { useApp } from '../state'
+import { useApp, useClock } from '../state'
 import { Empty } from './ui'
 
 const ICONS: Record<string, typeof Activity> = {
@@ -66,7 +66,8 @@ export function useEvents(intervalMs = 15_000, limit = 40) {
 }
 
 export function EventRow({ event }: { event: LogEvent }) {
-  const { now, openRef } = useApp()
+  const { openRef } = useApp()
+  const now = useClock()
   const Icon = ICONS[event.kind] ?? ScrollText
   const ref = parseRef(event.ref)
   const body = (

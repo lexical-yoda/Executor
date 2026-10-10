@@ -14,7 +14,6 @@ export interface Alert {
 }
 
 // Machines that come and go all day (the access devices) never raise an alert.
-const QUIET_ICONS = new Set(['laptop', 'phone'])
 
 /** Everything on the page that needs attention, worst first. */
 export function collectAlerts(s: Snapshot | null): Alert[] {
@@ -45,7 +44,7 @@ export function collectAlerts(s: Snapshot | null): Alert[] {
     }
   }
   for (const m of s.machines) {
-    if (m.status === 'down' && !QUIET_ICONS.has(m.icon)) {
+    if (m.status === 'down' && !m.roaming) {
       add({
         key: `machine:${m.id}`,
         level: 'bad',

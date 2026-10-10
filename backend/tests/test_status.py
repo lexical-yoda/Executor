@@ -41,3 +41,27 @@ def test_degraded_when_secondary_missing_or_unhealthy():
 def test_probe_only_when_runner_unavailable():
     assert service_status(SERVICE, Probe(ok=True), None) == ("up", [])
     assert service_status(SERVICE, None, None) == ("unknown", [])
+
+
+def test_roaming_devices_are_away_not_down():
+    from executor.config import Config
+    from executor.monitor import Monitor
+
+    config = Config.model_validate({
+        "security": {"allowed_clients": ["10.8.0.0/24"], "allowed_hosts": ["10.8.0.10"]},
+        "machines": [
+            {"id": "nas", "name": "NAS", "role": "Storage", "address": "10.8.0.20"},
+            {"id": "phone", "name": "Phone", "role": "Phone", "address": "10.8.0.60", "icon": "phone"},
+            {"id": "pc", "name": "PC", "role": "Games", "address": "10.8.0.70", "icon": "desktop", "roaming": True},
+            {"id": "laptop", "name": "Laptop", "role": "Work", "address": "10.8.0.40", "icon": "laptop",
+             "roaming": False},
+        ],
+        "services": [],
+    })
+    monitor = Monitor(config, None)
+    monitor.pings = {"nas": Probe(ok=True), "phone": Probe(ok=False), "pc": Probe(ok=False),
+                     "laptop": Probe(ok=False)}
+    snap = monitor.snapshot()
+    away = {m["id"]: m["away"] for m in snap["machines"]}
+    assert away == {"nas": False, "phone": True, "pc": True, "laptop": False}
+    assert (snap["summary"]["machines_up"], snap["summary"]["machines_total"], snap["summary"]["machines_away"]) == (1, 2, 2)

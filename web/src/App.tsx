@@ -10,9 +10,9 @@ import { Bridge } from './decks/Bridge'
 import { Engineering } from './decks/Engineering'
 import { Holonet } from './decks/Holonet'
 import { Settings } from './decks/Settings'
-import { useNarrow, useNow, usePoll, usePresentation } from './hooks'
+import { useNarrow, usePoll, usePresentation } from './hooks'
 import { type Deck, DECK_INFO, DECKS } from './route'
-import { ActionsProvider, AppProvider, useApp } from './state'
+import { ActionsProvider, AppProvider, ClockProvider, useApp } from './state'
 
 // The demo tour: how long it lingers on each deck.
 const TOUR: { deck: Deck; ms: number }[] = [
@@ -126,14 +126,19 @@ function Shell() {
   )
 }
 
+// Status every 5 s on a Mac; a phone checks every 15 s, which is plenty to
+// glance at and spares its battery and radio.
+const POLL_MS = window.matchMedia('(pointer: coarse)').matches ? 15_000 : 5_000
+
 export default function App() {
-  const { data: snapshot, error, updatedAt, refresh } = usePoll(api.status, 5000)
-  const now = useNow(1000)
+  const { data: snapshot, error, updatedAt, refresh } = usePoll(api.status, POLL_MS)
   return (
-    <AppProvider snapshot={snapshot} error={error} updatedAt={updatedAt} now={now} reload={refresh}>
-      <ActionsProvider runnerOk={snapshot?.runner.ok ?? false}>
-        <Shell />
-      </ActionsProvider>
-    </AppProvider>
+    <ClockProvider>
+      <AppProvider snapshot={snapshot} error={error} updatedAt={updatedAt} staleAfter={Math.max(20_000, POLL_MS * 3)} reload={refresh}>
+        <ActionsProvider runnerOk={snapshot?.runner.ok ?? false}>
+          <Shell />
+        </ActionsProvider>
+      </AppProvider>
+    </ClockProvider>
   )
 }

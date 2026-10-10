@@ -1,7 +1,7 @@
 import { Globe, ShieldCheck } from 'lucide-react'
 import type { Bandwidth, Certificate, Edge as EdgeData } from '../api'
 import { ago } from '../format'
-import { useApp } from '../state'
+import { useApp, useClock } from '../state'
 import { ShieldsCard, TrafficCard } from './Traffic'
 import { AttachedActions } from './ActionKit'
 import { Empty, Facts, SourceNote } from './ui'
@@ -195,7 +195,7 @@ function CertificateCard({ certs }: { certs: Certificate[] }) {
 }
 
 export function Edge({ edge }: { edge: EdgeData }) {
-  const { now } = useApp()
+  const now = useClock()
   return (
     <section className="section">
       <div className="section-head">

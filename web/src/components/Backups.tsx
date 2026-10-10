@@ -8,7 +8,7 @@ import type {
   StorageStatus,
 } from '../api'
 import { ago, bytes, duration, until } from '../format'
-import { useApp } from '../state'
+import { useApp, useClock } from '../state'
 import { AttachedActions } from './ActionKit'
 import { Empty, Facts, Num, SourceNote } from './ui'
 
@@ -318,7 +318,7 @@ function StorageCard({ item, now, index }: { item: StorageStatus; now: number; i
 }
 
 export function Backups({ backups }: { backups: BackupsData }) {
-  const { now } = useApp()
+  const now = useClock()
   const { duplicati, files } = backups
   return (
     <section className="section">
@@ -346,7 +346,8 @@ export function Backups({ backups }: { backups: BackupsData }) {
 }
 
 export function BackupJobDrawer({ id }: { id: string }) {
-  const { snapshot, now } = useApp()
+  const { snapshot } = useApp()
+  const now = useClock()
   const job = snapshot?.backups?.duplicati.jobs.find((j) => j.id === id)
   if (!job) return <Empty>This backup job is not in Duplicati any more.</Empty>
   return (
@@ -402,7 +403,8 @@ export function BackupJobDrawer({ id }: { id: string }) {
 }
 
 export function FileBackupDrawer({ name }: { name: string }) {
-  const { snapshot, now } = useApp()
+  const { snapshot } = useApp()
+  const now = useClock()
   const item = snapshot?.backups?.files.find((f) => f.name === name)
   if (!item) return <Empty>No such file backup.</Empty>
   return (
@@ -439,7 +441,8 @@ export function FileBackupDrawer({ name }: { name: string }) {
 }
 
 export function StorageDrawer({ name }: { name: string }) {
-  const { snapshot, now } = useApp()
+  const { snapshot } = useApp()
+  const now = useClock()
   const item = snapshot?.backups?.storage.find((s) => s.name === name)
   if (!item) return <Empty>No such storage.</Empty>
   const aws = item.aws

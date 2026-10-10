@@ -2,7 +2,7 @@ import { ShieldBan, ShieldOff } from 'lucide-react'
 import type { KeyboardEvent } from 'react'
 import type { PiHoleStatus } from '../api'
 import { ago, duration } from '../format'
-import { useApp } from '../state'
+import { useApp, useClock } from '../state'
 import { Empty, Facts, Num, SourceNote } from './ui'
 
 const n = (v: number | null | undefined) => (v == null ? '—' : v.toLocaleString())
@@ -119,7 +119,8 @@ export function DnsCard({ dns }: { dns: PiHoleStatus }) {
 }
 
 export function DnsDrawer() {
-  const { snapshot, now } = useApp()
+  const { snapshot } = useApp()
+  const now = useClock()
   const dns = snapshot?.pihole
   if (!dns) return <Empty>Pi-hole is not configured.</Empty>
   return (

@@ -1,13 +1,14 @@
 import { Loader2 } from 'lucide-react'
 import type { ActionInfo } from '../api'
-import { ago } from '../format'
-import { useActions, useApp } from '../state'
+import { ago, requester } from '../format'
+import { useActions, useApp, useClock } from '../state'
 import { ActionCard, runClock, runSeconds } from '../components/ActionKit'
 import { DeckSection, Empty, RowButton } from '../components/ui'
 
 export function Armory() {
   const { actions, error, runs, busy } = useActions()
-  const { open, now } = useApp()
+  const { open, snapshot } = useApp()
+  const now = useClock()
   const groups = new Map<string, ActionInfo[]>()
   for (const a of actions ?? []) {
     const key = a.group ?? 'General'
@@ -48,7 +49,8 @@ export function Armory() {
                   <span className={`run-badge run-badge-${r.status}`}>{r.status}</span>
                   <span className="run-list-title">{r.title}</span>
                   <span className="small muted">
-                    {ago(r.started_at, now)} · {runClock(runSeconds(r.started_at, r.finished_at, now))} · {r.requested_by}
+                    {ago(r.started_at, now)} · {runClock(runSeconds(r.started_at, r.finished_at, now))} ·{' '}
+                    {requester(r.requested_by, snapshot?.machines)}
                   </span>
                 </RowButton>
               </li>

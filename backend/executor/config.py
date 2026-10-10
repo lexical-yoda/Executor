@@ -66,6 +66,14 @@ class Machine(BaseModel):
     local: bool = False
     # System name in Beszel, for live resource stats and history.
     beszel: str | None = None
+    # A device that comes and goes: offline means away, not down, so it neither
+    # alerts nor counts against the machines total. Unset follows the icon:
+    # laptops and phones roam.
+    roaming: bool | None = None
+
+    @property
+    def roams(self) -> bool:
+        return self.roaming if self.roaming is not None else self.icon in ("laptop", "phone")
 
 
 class Security(BaseModel):

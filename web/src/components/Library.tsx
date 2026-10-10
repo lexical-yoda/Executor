@@ -2,7 +2,7 @@ import { Clapperboard, Library as LibraryIcon, Tv } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api, type Library, type LibraryItem, type MediaLibrary } from '../api'
 import { ago, bytes } from '../format'
-import { useApp } from '../state'
+import { useApp, useClock } from '../state'
 import { day, signed, SizeChart } from './Backups'
 import { Empty, Facts, Num, RowButton, SourceNote } from './ui'
 
@@ -123,7 +123,8 @@ export function LibraryCard({ library }: { library: Library }) {
 }
 
 export function LibraryDrawer() {
-  const { snapshot, now } = useApp()
+  const { snapshot } = useApp()
+  const now = useClock()
   const library = snapshot?.library
   const [days, setDays] = useState<{ date: string; bytes: number | null }[] | null>(null)
   useEffect(() => {

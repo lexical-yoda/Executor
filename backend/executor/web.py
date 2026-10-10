@@ -13,6 +13,8 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import GZipMiddleware
+from starlette.types import ASGIApp, Receive, Scope, Send
 from typing import Annotated
 
 from pydantic import BaseModel, Field, StringConstraints, field_validator
@@ -34,6 +36,27 @@ from .sources.media import MediaSources
 from .store import Store
 
 log = logging.getLogger("executor.web")
+
+
+# Map archives are read with range requests and are compressed already, and
+# posters are JPEG: compressing either only costs CPU (and breaks ranges).
+UNCOMPRESSED = re.compile(r"^/tiles/|/poster/")
+
+
+class Compress:
+    """Gzip for the page, its assets and the API. The status alone is about
+    60 KB of JSON every few seconds; compressed it is a fraction of that,
+    which matters to a phone on mobile data over WireGuard."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+        self.gzip = GZipMiddleware(app, minimum_size=1024, compresslevel=6)
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http" and not UNCOMPRESSED.search(scope["path"]):
+            await self.gzip(scope, receive, send)
+        else:
+            await self.app(scope, receive, send)
 
 
 class Changes(BaseModel):
@@ -454,6 +477,8 @@ def create_web_app(config: Config, runner: RunnerClient | None, static_dir: Path
                 raise HTTPException(404)
             return FileResponse(index, headers={"Cache-Control": "no-cache"})
 
+    app.add_middleware(Compress)
+    # Added last, so it runs first: refused clients get nothing, compressed or not.
     app.add_middleware(Guard, allowed_clients=config.security.allowed_clients,
                        allowed_hosts=config.security.allowed_hosts,
                        denied_clients=config.security.denied_clients)

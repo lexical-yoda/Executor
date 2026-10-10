@@ -12,8 +12,9 @@ import {
 import 'maplibre-gl/dist/maplibre-gl.css'
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
 import { Protocol } from 'pmtiles'
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, type Tileset, type Watching } from '../api'
+import { useStable } from '../hooks'
 import { along, arc, circle, distanceKm, type LngLat, measure } from './geometry'
 import { buildStyle } from './style'
 import { type MapViewProps, placeKey, recent, streamKey, trailHops } from './types'
@@ -68,6 +69,42 @@ function useReducedMotion(): boolean {
   return reduced
 }
 
+// Phones draw the map at no more than twice their pixel density and move its
+// dots at half the Mac's frame rate: both cost heat for no visible gain.
+const TOUCH = window.matchMedia('(pointer: coarse)').matches
+const FLOW_FPS = TOUCH ? 15 : 30
+
+/** Whether a map is worth animating: on screen, in a visible tab, and not under
+ *  a phone's full-screen drawer (unless the map is inside that drawer). */
+function useAwake(el: RefObject<HTMLElement | null>): boolean {
+  const [awake, setAwake] = useState(true)
+  useEffect(() => {
+    const node = el.current
+    if (!node) return
+    const inDrawer = !!node.closest('.drawer')
+    const phone = window.matchMedia('(max-width: 760px)')
+    let inView = true
+    const update = () => {
+      const covered = !inDrawer && phone.matches && document.documentElement.classList.contains('drawer-open')
+      setAwake(inView && !document.hidden && !covered)
+    }
+    const seen = new IntersectionObserver(([entry]) => {
+      inView = entry.isIntersecting
+      update()
+    })
+    seen.observe(node)
+    const classes = new MutationObserver(update)
+    classes.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+    document.addEventListener('visibilitychange', update)
+    return () => {
+      seen.disconnect()
+      classes.disconnect()
+      document.removeEventListener('visibilitychange', update)
+    }
+  }, [el])
+  return awake
+}
+
 /** Tooltip content, built from text nodes (never HTML from the data). */
 function tip(lines: { text: string; cls?: string }[]): HTMLElement {
   const box = document.createElement('div')
@@ -94,8 +131,17 @@ const INTERACTIVE = [
 ]
 
 export default function MapView(props: MapViewProps & { overlay?: ReactNode; className?: string }) {
-  const { variant, mode, origin, hub, nodeStatus, live, places, trail, replay, selected, tour } = props
-  const threats = useMemo(() => (mode === 'threats' ? (props.threats ?? []) : []), [mode, props.threats])
+  const { variant, mode, replay, selected, tour } = props
+  // Callers rebuild these on every render; keep the same objects while their
+  // content stays the same, so the map's sources are only rewritten on change.
+  const origin = useStable(props.origin)
+  const hub = useStable(props.hub)
+  const nodeStatus = useStable(props.nodeStatus)
+  const live = useStable(props.live)
+  const places = useStable(props.places)
+  const trail = useStable(props.trail)
+  const allThreats = useStable(props.threats)
+  const threats = useMemo(() => (mode === 'threats' ? (allThreats ?? []) : []), [mode, allThreats])
   const wrap = useRef<HTMLDivElement>(null)
   const box = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MapLibre | null>(null)
@@ -103,11 +149,14 @@ export default function MapView(props: MapViewProps & { overlay?: ReactNode; cla
   const [tiles, setTiles] = useState<Tileset[] | null>(null)
   const [fullscreen, setFullscreen] = useState(false)
   const legs = useRef<Leg[]>([])
+  // Bumped whenever the legs change; `moving` says whether anything should flow.
+  const [flow, setFlow] = useState({ version: 0, moving: false })
   const refit = useRef<(animate: boolean) => void>(() => {})
   const userMoved = useRef(false)
   const onOpen = useRef(props.onOpen)
   onOpen.current = props.onOpen
   const reduced = useReducedMotion()
+  const awake = useAwake(wrap)
   const groupsRef = useRef<ViewerGroup[]>([])
 
   useEffect(() => {
@@ -124,7 +173,7 @@ export default function MapView(props: MapViewProps & { overlay?: ReactNode; cla
   // --- the map itself, created once the tile archives are known ------------
   useEffect(() => {
     if (!tiles || !box.current) return
-    const touch = window.matchMedia('(pointer: coarse)').matches
+    const touch = TOUCH
     const map = new MapLibre({
       container: box.current,
       style: buildStyle(tiles),
@@ -138,6 +187,7 @@ export default function MapView(props: MapViewProps & { overlay?: ReactNode; cla
       touchPitch: false,
       cooperativeGestures: touch,
       fadeDuration: 150,
+      pixelRatio: touch ? Math.min(window.devicePixelRatio, 2) : window.devicePixelRatio,
     })
     map.touchZoomRotate.disableRotation()
     map.keyboard.disableRotation()
@@ -344,7 +394,6 @@ export default function MapView(props: MapViewProps & { overlay?: ReactNode; cla
     set('viewers', collection(viewers))
     set('links', collection(links))
     set('accuracy', collection(accuracy))
-    legs.current = next
 
     // All places seen (or one user's), busiest ones named.
     const showPlaces = mode === 'all' || trail.length > 0
@@ -411,46 +460,43 @@ export default function MapView(props: MapViewProps & { overlay?: ReactNode; cla
       })
     }
     set('threat-links', collection(threatLinks))
+    legs.current = next
+    // Dots flow only while someone streams (their link moves the route too) or,
+    // on a Mac, while attacks converge; otherwise the map is drawn once and rests.
+    const moving = next.some((l) => l.kind === 'link' || (l.kind === 'threat' && !TOUCH))
+    setFlow((f) => ({ version: f.version + 1, moving }))
   }, [ready, origin, hub, nodeStatus, groups, live.length, places, hops, mode, trail.length, replay, selected, threats])
 
   // --- flowing dots along the route and every link ----------------------------
+  const animate = flow.moving && awake && !reduced
   useEffect(() => {
     const map = mapRef.current
     if (!map || !ready) return
-    const flow = map.getSource('flow') as GeoJSONSource | undefined
-    if (!flow) return
-    const frame = (t: number) => {
+    const source = map.getSource('flow') as GeoJSONSource | undefined
+    if (!source) return
+    const frame = (t: number | null) => {
       const features: GeoJSON.Feature[] = []
       for (const leg of legs.current) {
         for (let i = 0; i < leg.dots; i += 1) {
-          const k = reduced ? (i + 0.5) / leg.dots : (t / leg.period + i / leg.dots) % 1
+          const k = t == null ? (i + 0.5) / leg.dots : (t / leg.period + i / leg.dots) % 1
           features.push(point(along(leg.line, leg.lengths, k), { leg: leg.kind }))
         }
       }
-      flow.setData(collection(features))
-      if (map.getLayer('viewer-halo') && !reduced) {
-        const phase = (t % 2000) / 2000
+      source.setData(collection(features))
+      if (map.getLayer('viewer-halo')) {
+        const phase = t == null ? 0.25 : (t % 2000) / 2000
         map.setPaintProperty('viewer-halo', 'circle-radius', 8 + phase * 16)
         map.setPaintProperty('viewer-halo', 'circle-opacity', 0.32 * (1 - phase))
       }
     }
-    if (reduced) {
-      frame(0)
+    if (!animate) {
+      // Still dots, drawn once: no frames at all until something changes.
+      frame(null)
       return
     }
-    let id = 0
-    let last = 0
-    const loop = (t: number) => {
-      // About 30 frames a second is plenty for small dots, and skip work in hidden tabs.
-      if (t - last > 33 && !document.hidden) {
-        frame(t)
-        last = t
-      }
-      id = requestAnimationFrame(loop)
-    }
-    id = requestAnimationFrame(loop)
-    return () => cancelAnimationFrame(id)
-  }, [ready, reduced])
+    const id = window.setInterval(() => frame(performance.now()), 1000 / FLOW_FPS)
+    return () => window.clearInterval(id)
+  }, [ready, animate, flow.version])
 
   // --- camera ------------------------------------------------------------------
   const focusPoints = useCallback((): LngLat[] => {

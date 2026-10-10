@@ -20,8 +20,6 @@ log = logging.getLogger("executor.events")
 # Docker's "Up 3 hours (healthy)" status text, for spotting restarts.
 UPTIME = re.compile(r"^Up (\d+|an?|About an?|Less than a) (second|minute|hour|day|week|month|year)s?", re.I)
 UNIT = {"second": 1, "minute": 60, "hour": 3600, "day": 86400, "week": 604800, "month": 2592000, "year": 31536000}
-# Machines that come and go all day (the access devices) are not worth an event.
-QUIET_ICONS = {"laptop", "phone"}
 
 
 def uptime_seconds(status: str | None) -> int | None:
@@ -135,7 +133,8 @@ class Tracker:
     def machines(self, machines: list[dict], now: float | None = None) -> None:
         now = now or time.time()
         for m in machines:
-            if m.get("icon") in QUIET_ICONS or m["status"] == "unknown":
+            # Devices that come and go all day (laptops, phones) are not worth an event.
+            if m.get("roaming") or m["status"] == "unknown":
                 continue
             seen = self.machines_seen.get(m["id"])
             self.machines_seen[m["id"]] = (m["status"], now) if not seen or seen[0] != m["status"] else seen

@@ -13,9 +13,10 @@ import {
   Zap,
 } from 'lucide-react'
 import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from 'react'
-import { type ActionInfo, api, type RunDetail, type StepStatus, type Streams } from '../api'
-import { ago } from '../format'
-import { useActions, useApp } from '../state'
+import { type ActionInfo, api, type RunDetail, type RunSummary, type StepStatus, type Streams } from '../api'
+import { ago, requester } from '../format'
+import { useNow } from '../hooks'
+import { useActions, useApp, useClock } from '../state'
 import { Empty } from './ui'
 
 const HOLD_MS: Record<ActionInfo['danger'], number> = { low: 700, medium: 1400, high: 2600 }
@@ -196,7 +197,8 @@ export function DangerBadge({ danger }: { danger: ActionInfo['danger'] }) {
 /** The pre-launch briefing and the hold-to-launch button. */
 export function ActionDrawer({ id }: { id: string }) {
   const { actions, runs, busy, start, error: loadError } = useActions()
-  const { open, now } = useApp()
+  const { open } = useApp()
+  const now = useClock()
   const [error, setError] = useState<string | null>(null)
   const action = actions?.find((a) => a.id === id)
   if (!actions) return <p className="muted small">{loadError ? `Runner unavailable: ${loadError}` : 'Loading…'}</p>
@@ -277,9 +279,11 @@ function StepIcon({ status }: { status: StepStatus }) {
 
 /** A run as a pipeline: each step lights up as it goes, with its time. */
 export function RunDrawer({ id }: { id: string }) {
-  const { now } = useApp()
   const { refresh } = useActions()
+  const { snapshot } = useApp()
   const [run, setRun] = useState<RunDetail | null>(null)
+  // Step timers count seconds while the run goes on; a finished run sits still.
+  const now = useNow(run && !run.finished_at ? 1000 : 60_000)
   const [lines, setLines] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [showLog, setShowLog] = useState(false)
@@ -376,7 +380,7 @@ export function RunDrawer({ id }: { id: string }) {
         </pre>
       )}
       {error && <p className="error">Lost contact with the run: {error}</p>}
-      <p className="small muted">Requested from {run.requested_by}</p>
+      <p className="small muted">Requested from {requester(run.requested_by, snapshot?.machines)}</p>
     </div>
   )
 }
@@ -410,8 +414,14 @@ export function AttachedActions({ target, label = true }: { target: string; labe
 /** Header chip while an action runs, from any deck. */
 export function RunningChip() {
   const { busy, runs } = useActions()
-  const { open, now } = useApp()
+  const { open } = useApp()
   if (!busy) return null
+  return <RunningClock busy={busy} runs={runs} open={open} />
+}
+
+/** The chip itself, with a seconds clock that only ticks while a run is on. */
+function RunningClock({ busy, runs, open }: { busy: string; runs: RunSummary[]; open: (kind: string, id?: string) => void }) {
+  const now = useNow(1000)
   const run = runs.find((r) => r.id === busy)
   return (
     <button type="button" className="running-chip" onClick={() => open('run', busy)}>
@@ -424,7 +434,8 @@ export function RunningChip() {
 
 export function ActionCard({ action, index }: { action: ActionInfo; index: number }) {
   const { runs } = useActions()
-  const { open, now } = useApp()
+  const { open } = useApp()
+  const now = useClock()
   const last = runs.find((r) => r.action === action.id)
   return (
     <button

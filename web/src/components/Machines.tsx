@@ -16,8 +16,8 @@ import {
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { MachineIcon, MachineStats, MachineStatus } from '../api'
-import { ago, duration, gib, latency, pct, rate } from '../format'
-import { useApp } from '../state'
+import { ago, duration, gib, latency, machineState, pct, rate } from '../format'
+import { useApp, useClock } from '../state'
 import { AttachedActions } from './ActionKit'
 import { Sparkline } from './Sparkline'
 import { StatusDot, StatusPill } from './StatusDot'
@@ -244,8 +244,9 @@ function RichCard({
 
 function CompactCard({ machine, now, onOpen }: { machine: MachineStatus; now: number; onOpen: () => void }) {
   const Icon = ICONS[machine.icon] ?? Server
+  const state = machineState(machine)
   return (
-    <button type="button" className={`machine-compact status-${machine.status}`} onClick={onOpen}>
+    <button type="button" className={`machine-compact status-${state.status}`} onClick={onOpen}>
       <Icon size={16} strokeWidth={1.7} aria-hidden="true" />
       <div className="compact-text">
         <span className="compact-name">{machine.name}</span>
@@ -254,11 +255,9 @@ function CompactCard({ machine, now, onOpen }: { machine: MachineStatus; now: nu
       <span className="small muted num compact-meta">
         {machine.status === 'up'
           ? latency(machine.latency_ms)
-          : machine.last_seen
-            ? `seen ${ago(machine.last_seen, now)}`
-            : 'not seen yet'}
+          : `${machine.away ? 'away · ' : ''}${machine.last_seen ? `seen ${ago(machine.last_seen, now)}` : 'not seen yet'}`}
       </span>
-      <StatusDot status={machine.status} />
+      <StatusDot status={state.status} label={state.label} />
     </button>
   )
 }
@@ -299,7 +298,8 @@ function LocalCard({ machine, index, onOpen }: { machine: MachineStatus; index: 
 }
 
 export function Machines({ machines }: { machines: MachineStatus[] }) {
-  const { open, now } = useApp()
+  const { open } = useApp()
+  const now = useClock()
   const rich = machines.filter((m) => m.monitored || m.details)
   const compact = machines.filter((m) => !m.monitored && !m.details)
 
@@ -308,7 +308,8 @@ export function Machines({ machines }: { machines: MachineStatus[] }) {
       <div className="section-head">
         <h2>Machines</h2>
         <span className="muted small">
-          {machines.filter((m) => m.status === 'up').length} of {machines.length} online
+          {machines.filter((m) => m.status === 'up').length} of {machines.filter((m) => !m.away).length} online
+          {machines.some((m) => m.away) && ` · ${machines.filter((m) => m.away).length} away`}
         </span>
       </div>
       <div className="machines-rich">

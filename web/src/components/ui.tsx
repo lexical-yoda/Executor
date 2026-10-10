@@ -1,7 +1,7 @@
 import { ChevronRight } from 'lucide-react'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { ago } from '../format'
-import { useApp } from '../state'
+import { useClock } from '../state'
 
 const reduceMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
@@ -56,7 +56,7 @@ export function Num({
 
 /** "Source · updated" line that every drawer ends with. */
 export function SourceNote({ source, at }: { source: string; at?: number | string | null }) {
-  const { now } = useApp()
+  const now = useClock()
   return (
     <p className="source-note small muted">
       Source: {source}
