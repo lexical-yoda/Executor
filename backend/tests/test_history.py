@@ -2,16 +2,21 @@ import asyncio
 import gzip
 import io
 import json
+import logging
+import struct
 import tarfile
 import time
-from datetime import datetime, timezone
+import zipfile
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 import httpx
 from fastapi.testclient import TestClient
 
 from executor.config import Config, LocationCorrection
 from executor.history import MediaHistory
-from executor.sources.geo import Corrections, DbIpLite, GeoLite2, Locator, describe, public_ip
+from executor.sources.geo import (Corrections, DbIpLite, GeoLite2, IP2LocationLite, Locator, describe,
+                                  describe_ip2location, public_ip)
 from executor.sources.jellyfin import Jellyfin, parse_activity, parse_time
 from executor.store import Store
 from executor.web import create_web_app
@@ -103,6 +108,119 @@ def test_geolite2_download_sends_the_account_and_checks_the_archive(tmp_path):
     seen["refuse"] = True
     asyncio.run(geo.ensure())
     assert geo.error == "MaxMind refused the account ID or licence key"
+
+
+def ip2location_bin(rows, year=26, month=10, day=1):
+    """A tiny IP2Location DB11 (IPv4) file: rows of (first address, country code,
+    country, region, city, lat, lon), sorted, each running to the next one."""
+    columns = 8  # ip_from, country, region, city, latitude, longitude, zip code, time zone
+    start = 64
+    rows = [*rows, ("255.255.255.255", "-", "-", "-", "-", 0, 0)]
+    strings = bytearray()
+    text_at = start + (len(rows) + 1) * columns * 4  # after the rows and one blank row
+
+    def text(*values):
+        at = text_at + len(strings)
+        for value in values:
+            strings.extend(bytes([len(value)]) + value.encode())
+        return at
+
+    body = bytearray()
+    for first, code, country, region, city, lat, lon in rows:
+        number = int.from_bytes(bytes(int(x) for x in first.split(".")), "big")
+        body += struct.pack("<IIIIffII", number, text(code, country), text(region), text(city), lat, lon,
+                            text("-"), text("-"))
+    body += bytes(columns * 4)
+    header = struct.pack("<BBBBBIIIIIIBBB", 11, columns, year, month, day, len(rows) - 1, start + 1, 0, 0, 0, 0,
+                         1, 0, 0)
+    return header.ljust(start, b"\0") + bytes(body) + bytes(strings)
+
+
+IP2_ROWS = [("0.0.0.0", "-", "-", "-", "-", 0, 0),
+            ("8.8.8.0", "US", "United States of America", "California", "Mountain View", 37.406, -122.0785),
+            ("8.8.9.0", "-", "-", "-", "-", 0, 0),
+            ("9.9.9.0", "IN", "India", "Kerala", "Porto", 9.9312, 76.2673),
+            ("9.9.10.0", "-", "-", "-", "-", 0, 0)]
+
+
+def zipped(name, content):
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr(name, content)
+        archive.writestr("LICENSE_LITE.TXT", "licence")
+    return buffer.getvalue()
+
+
+def test_ip2location_installs_once_a_month_and_never_logs_the_token(tmp_path, caplog):
+    caplog.set_level(logging.INFO)
+    requests = []
+
+    def handler(request):
+        requests.append(dict(request.url.params))
+        return httpx.Response(200, content=zipped("IP2LOCATION-LITE-DB11.BIN", ip2location_bin(IP2_ROWS)))
+
+    geo = IP2LocationLite(tmp_path / "geo", "tok-secret", transport=httpx.MockTransport(handler))
+    asyncio.run(geo.ensure(datetime(2026, 10, 13, tzinfo=timezone.utc)))
+    assert requests == [{"token": "tok-secret", "file": "DB11LITEBIN"}]
+    assert geo.ready and geo.version == "2026-10-01" and geo.error is None
+    assert geo.lookup("9.9.9.9") == {"city": "Porto", "region": "Kerala", "country": "India", "country_code": "IN",
+                                     "lat": 9.9312, "lon": 76.2673, "radius_km": None, "source": "ip2location"}
+    assert geo.lookup("8.8.8.8")["city"] == "Mountain View"
+    assert geo.lookup("8.8.9.1") is None  # no place for it
+    assert geo.lookup("2001:4860:4860::8888") is None  # IPv4 edition: left to the next database
+    assert geo.lookup("192.168.0.5") is None
+    assert "tok-secret" not in caplog.text
+
+    # This month's release is in: no more downloads until next month's download day.
+    asyncio.run(geo.ensure(datetime(2026, 10, 30, tzinfo=timezone.utc)))
+    day = geo.download_day("2026-11")
+    assert 1 <= day <= 7
+    if day > 1:
+        asyncio.run(geo.ensure(datetime(2026, 11, day - 1, 12, tzinfo=timezone.utc)))
+    assert len(requests) == 1
+    asyncio.run(geo.ensure(datetime(2026, 11, day, 12, tzinfo=timezone.utc)))
+    assert len(requests) == 2
+
+    # A reopened folder finds the installed file and its release.
+    again = IP2LocationLite(tmp_path / "geo", "tok-secret")
+    assert again.ready and again.version == "2026-10-01"
+
+
+def test_ip2location_refusals_wait_before_trying_again(tmp_path):
+    calls = []
+    replies = [httpx.Response(200, text="NO PERMISSION"),
+               httpx.Response(200, content=zipped("IP2LOCATION-LITE-DB11.BIN", b"not a database")),
+               httpx.Response(403)]
+
+    def handler(request):
+        calls.append(1)
+        return replies[len(calls) - 1]
+
+    geo = IP2LocationLite(tmp_path / "geo", "tok-secret", transport=httpx.MockTransport(handler))
+    start = datetime(2026, 10, 13, tzinfo=timezone.utc)
+    asyncio.run(geo.ensure(start))
+    assert geo.error == "IP2Location refused the download: NO PERMISSION" and not geo.ready
+    asyncio.run(geo.ensure(start + timedelta(hours=1)))
+    assert len(calls) == 1  # waits before asking again
+    asyncio.run(geo.ensure(start + timedelta(hours=13)))
+    assert len(calls) == 2 and "download failed" in geo.error and not geo.ready
+    assert sorted(p.name for p in (tmp_path / "geo").iterdir()) == []
+    asyncio.run(geo.ensure(start + timedelta(hours=26)))
+    assert geo.error == "download failed: HTTP 403" and "tok-secret" not in geo.error
+
+
+def test_describe_ip2location_drops_placeholders():
+    record = SimpleNamespace(country_short="IN", country_long="India", region="-", city="Porto",
+                             latitude="9.931230", longitude="76.267300")
+    assert describe_ip2location(record) == {"city": "Porto", "region": None, "country": "India",
+                                            "country_code": "IN", "lat": 9.9312, "lon": 76.2673,
+                                            "radius_km": None, "source": "ip2location"}
+    assert describe_ip2location(SimpleNamespace(country_short="-", country_long="-", region="-", city="-",
+                                                latitude="0.000000", longitude="0.000000")) is None
+    assert describe_ip2location(SimpleNamespace(country_short="INVALID IP ADDRESS", country_long="", region="",
+                                                city="", latitude="INVALID IP ADDRESS",
+                                                longitude="INVALID IP ADDRESS")) is None
+    assert describe_ip2location(None) is None
 
 
 def test_corrections_beat_databases_and_prefer_devices():

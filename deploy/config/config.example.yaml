@@ -54,7 +54,7 @@ integrations:
     url: http://host.docker.internal:8096
     # Location history: who connected from where, kept this many days in
     # EXECUTOR_WEB_DATA (0 turns it off). Locations are looked up locally in
-    # the free DB-IP Lite database; addresses are never sent anywhere.
+    # free databases (see README); addresses are never sent anywhere.
     history_days: 90
     # Optional: library sizes for the media library card, measured by the
     # runner. Jellyfin library name -> folder id under `sizes:` in actions.yaml.

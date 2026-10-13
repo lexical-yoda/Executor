@@ -128,7 +128,7 @@ def main() -> None:
         history = None
         if jellyfin and config.integrations.jellyfin:
             from .history import MediaHistory
-            from .sources.geo import Corrections, DbIpLite, GeoLite2, Locator, MmdbSource
+            from .sources.geo import Corrections, DbIpLite, GeoLite2, IP2LocationLite, Locator, MmdbSource
 
             settings = config.integrations.jellyfin
             store = geo = None
@@ -138,11 +138,15 @@ def main() -> None:
                 # Earlier versions kept DB-IP's month in a file called "month".
                 if (folder / "month").exists() and not (folder / f"{DbIpLite.file}.version").exists():
                     (folder / "month").rename(folder / f"{DbIpLite.file}.version")
+                # In order of preference; DB-IP needs no account, so it stands in when neither is set up.
                 sources: list[MmdbSource] = []
+                if os.environ.get("IP2LOCATION_TOKEN"):
+                    sources.append(IP2LocationLite(folder, os.environ["IP2LOCATION_TOKEN"]))
                 if os.environ.get("MAXMIND_ACCOUNT_ID") and os.environ.get("MAXMIND_LICENSE_KEY"):
                     sources.append(GeoLite2(folder, os.environ["MAXMIND_ACCOUNT_ID"],
                                             os.environ["MAXMIND_LICENSE_KEY"]))
-                sources.append(DbIpLite(folder))
+                if not sources:
+                    sources.append(DbIpLite(folder))
                 home = None
                 if settings.origin:
                     home = {"city": settings.origin.label, "region": None, "country": None, "country_code": None,

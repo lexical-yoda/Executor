@@ -1,20 +1,24 @@
 """City-level IP geolocation, done locally.
 
-Two free databases are downloaded into the web container's data folder, and
-every lookup happens there, so client addresses are never sent anywhere:
+Free databases are downloaded into the web container's data folder, and every
+lookup happens there, so client addresses are never sent anywhere:
 
+- IP2Location LITE DB11 (needs a free IP2Location account's download token;
+  published monthly, fetched once a month on a day in the first week, as
+  IP2Location asks). IPv4 only here. Free with attribution and no
+  redistribution; the page credits it in IP2Location's own words.
 - MaxMind GeoLite2 City (needs a free MaxMind account; updated twice a week,
   refreshed here weekly). It also estimates how far off it may be
   (``accuracy_radius``). Licence: GeoLite2 End User License Agreement; the page
   credits "GeoLite2 data created by MaxMind".
-- DB-IP Lite City (no account; monthly). Licence CC BY 4.0; the page credits
-  "IP geolocation by DB-IP".
+- DB-IP Lite City (no account; monthly), used only when neither account is
+  set up. Licence CC BY 4.0; the page credits "IP geolocation by DB-IP".
 
-GeoLite2 answers first when it is available; DB-IP is the fallback and a
-second opinion. Corrections from the config (known networks, devices or
-users) override both, because no database knows that a TV is in your living
-room. Accuracy is city level at best: mobile networks and some ISPs route
-through hub cities, and VPN users appear at the VPN's exit.
+The first configured database answers; the next is a second opinion.
+Corrections from the config (known networks, devices or users) override them
+all, because no database knows that a TV is in your living room. Accuracy is
+city level at best: mobile networks and some ISPs route through hub cities,
+and VPN users appear at the VPN's exit.
 """
 
 from __future__ import annotations
@@ -28,19 +32,33 @@ import logging
 import math
 import os
 import shutil
+import struct
 import tarfile
 import time
+import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import httpx
+import IP2Location
 import maxminddb
 
 if TYPE_CHECKING:
     from ..config import Household
 
 log = logging.getLogger("executor.geo")
+
+
+class _DropTokenRequests(logging.Filter):
+    """httpx logs every request's full address at INFO, and IP2Location's
+    download address carries the account's token: never let it reach a log."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "token=" not in record.getMessage()
+
+
+logging.getLogger("httpx").addFilter(_DropTokenRequests())
 
 # Bump when the way answers are chosen changes, so history is located again.
 RULES = "3"
@@ -88,8 +106,40 @@ def describe(record: dict | None, source: str = "dbip") -> dict | None:
     }
 
 
+def _ip2location_text(value: Any) -> str | None:
+    """A field from an IP2Location record, or None for its placeholders."""
+    text = str(value).strip() if value is not None else ""
+    if not text or text == "-" or text.startswith("This parameter is unavailable") or text == "INVALID IP ADDRESS":
+        return None
+    return text
+
+
+def describe_ip2location(record: Any, source: str = "ip2location") -> dict | None:
+    if record is None:
+        return None
+    try:
+        lat, lon = float(record.latitude), float(record.longitude)
+    except (TypeError, ValueError):
+        return None
+    code = _ip2location_text(record.country_short)
+    # Addresses it has no place for come back as "-" at 0, 0.
+    if not code or (lat == 0 and lon == 0):
+        return None
+    return {
+        "city": _ip2location_text(record.city),
+        "region": _ip2location_text(record.region),
+        "country": _ip2location_text(record.country_long),
+        "country_code": code,
+        "lat": round(lat, 4),
+        "lon": round(lon, 4),
+        "radius_km": None,  # IP2Location gives no accuracy estimate
+        "source": source,
+    }
+
+
 class MmdbSource:
-    """A MaxMind-format database file, kept up to date by ``ensure``."""
+    """A downloaded database file (MaxMind format unless a subclass reads
+    another), kept up to date by ``ensure``."""
 
     name = "mmdb"
     file = "db.mmdb"
@@ -99,17 +149,21 @@ class MmdbSource:
         self.path = folder / self.file
         self.version_file = folder / f"{self.file}.version"
         self._transport = transport
-        self._reader: maxminddb.Reader | None = None
+        self._reader: Any = None
         self.version: str | None = None
         self.fetched: float | None = None
         self.error: str | None = None
         self._open()
 
+    def _load(self, path: Path) -> Any:
+        """Open a reader for the file, raising if it is not a usable database."""
+        return maxminddb.open_database(str(path), maxminddb.MODE_FILE)
+
     def _open(self) -> None:
         if not self.path.exists():
             return
         try:
-            reader = maxminddb.open_database(str(self.path), maxminddb.MODE_FILE)
+            reader = self._load(self.path)
         except (OSError, ValueError, maxminddb.InvalidDatabaseError) as exc:
             self.error = f"unreadable database: {exc.__class__.__name__}"
             return
@@ -140,7 +194,7 @@ class MmdbSource:
 
     def _install(self, unpacked: Path, version: str) -> None:
         # Refuse a file that is not a readable database before replacing the old one.
-        maxminddb.open_database(str(unpacked), maxminddb.MODE_FILE).close()
+        self._load(unpacked).close()
         os.replace(unpacked, self.path)
         self.version_file.write_text(version)
         self._open()
@@ -249,6 +303,115 @@ class GeoLite2(MmdbSource):
         # Count the week from now, so a quiet release schedule does not mean daily downloads.
         os.utime(self.version_file, (time.time(), time.time()))
         self._open()
+
+
+class IP2LocationLite(MmdbSource):
+    """IP2Location LITE DB11 (IPv4), in IP2Location's own BIN format."""
+
+    name = "ip2location"
+    file = "IP2LOCATION-LITE-DB11.BIN"
+    package = "DB11LITEBIN"
+    url = "https://www.ip2location.com/download/"
+    # Gap between tries that did not bring this month's release (failed, refused,
+    # or still last month's), so a problem never turns into many downloads.
+    retry = 12 * 3600
+
+    def __init__(self, folder: Path, token: str, transport: httpx.AsyncBaseTransport | None = None) -> None:
+        self._token = token
+        self._tried: float | None = None
+        super().__init__(folder, transport)
+
+    def _load(self, path: Path) -> Any:
+        try:
+            reader = IP2Location.IP2Location(str(path))
+        except Exception as exc:  # its parser, fed the wrong file, can fail in many ways
+            raise ValueError(f"not an IP2Location database ({exc.__class__.__name__})") from exc
+        # The right file places a well-known address; a country-only edition or junk does not.
+        try:
+            usable = describe_ip2location(reader.get_all("8.8.8.8")) is not None
+        except Exception:
+            usable = False
+        if not usable:
+            reader.close()
+            raise ValueError("not an IP2Location city database")
+        return reader
+
+    def lookup(self, ip: str | None) -> dict | None:
+        address = public_ip(ip)
+        # The IPv4 edition: an IPv6 address is left to the next database.
+        if not address or ":" in address or not self._reader:
+            return None
+        try:
+            return describe_ip2location(self._reader.get_all(address), self.name)
+        except (OSError, ValueError, IndexError, struct.error):
+            return None
+
+    def download_day(self, month: str) -> int:
+        """IP2Location asks for one download a month, on a random day of its first
+        week. This picks that day per month, the same across restarts."""
+        return hashlib.sha256(f"{month}:{self._token}".encode()).digest()[0] % 7 + 1
+
+    async def ensure(self, now: datetime | None = None) -> None:
+        """Fetch a release at once when there is none, then once a month."""
+        now = now or datetime.now(timezone.utc)
+        month = now.strftime("%Y-%m")
+        if self.ready and (self.version or "").startswith(month):
+            return
+        if self.ready and now.day < self.download_day(month):
+            return
+        if self._tried is not None and now.timestamp() - self._tried < self.retry:
+            return
+        self._tried = now.timestamp()
+        self.folder.mkdir(parents=True, exist_ok=True)
+        partial = self.folder / f"{self.file}.zip.part"
+        try:
+            async with self._client() as client:
+                query = {"token": self._token, "file": self.package}
+                async with client.stream("GET", self.url, params=query) as response:
+                    if response.status_code != 200:
+                        # Report the status only: the request's address carries the token.
+                        self.error = f"download failed: HTTP {response.status_code}"
+                        log.warning("IP2Location download failed: HTTP %s", response.status_code)
+                        return
+                    with partial.open("wb") as handle:
+                        async for chunk in response.aiter_bytes(1 << 20):
+                            handle.write(chunk)
+            if not zipfile.is_zipfile(partial):
+                # A refusal comes back as a short line of text, such as "NO PERMISSION".
+                with partial.open("rb") as handle:
+                    reason = handle.read(120).decode("ascii", "replace").replace(self._token, "…").strip()
+                self.error = f"IP2Location refused the download: {reason or 'empty reply'}"
+                log.warning("%s", self.error)
+                return
+            await asyncio.to_thread(self._unpack, partial)
+            log.info("IP2Location %s installed", self.version)
+        except (httpx.HTTPError, OSError, ValueError, zipfile.BadZipFile) as exc:
+            self.error = f"download failed: {exc.__class__.__name__}"
+            log.warning("IP2Location download failed: %s", exc.__class__.__name__)
+        finally:
+            partial.unlink(missing_ok=True)
+
+    def _unpack(self, partial: Path) -> None:
+        unpacked = self.folder / f"{self.file}.new"
+        with zipfile.ZipFile(partial) as archive:
+            member = next((m for m in archive.infolist()
+                           if not m.is_dir() and m.filename.rsplit("/", 1)[-1].upper() == self.file), None)
+            if member is None:
+                raise ValueError(f"no {self.file} in the archive")
+            with archive.open(member) as source, unpacked.open("wb") as target:
+                shutil.copyfileobj(source, target, 1 << 20)
+        try:
+            # The file's header carries its release date.
+            reader = self._load(unpacked)
+            year, month, day = (getattr(reader, f"_db{part}", 0) for part in ("year", "month", "day"))
+            reader.close()
+            if year and month:
+                version = f"20{year:02d}-{month:02d}-{day:02d}"
+            else:
+                version = datetime.now(timezone.utc).strftime("%Y-%m")
+            self._install(unpacked, version)
+        finally:
+            unpacked.unlink(missing_ok=True)
 
 
 class Corrections:

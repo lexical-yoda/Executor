@@ -267,16 +267,25 @@ folder, Executor also keeps a location history:
 - Jellyfin's sessions are sampled every 30 seconds, and its activity log
   (which records the address of every session start for about a month) is
   imported, so history starts with what Jellyfin already knows.
-- Each address is looked up in the free DB-IP Lite City database, downloaded
-  monthly into the data folder. Lookups are local; addresses are never sent
-  to any other service. Accuracy is city level at best: mobile carriers often
-  place users in a hub city, and VPN users appear at the VPN's exit. The page
-  credits DB-IP as its CC BY 4.0 licence requires.
-- Two free databases, both downloaded and used locally: MaxMind GeoLite2
-  City first, when `MAXMIND_ACCOUNT_ID` and `MAXMIND_LICENSE_KEY` are set (a
-  free account; refreshed weekly; it also estimates its own error, drawn as a
-  faint circle), then DB-IP Lite. When they name different cities, the
-  stream's details show the second opinion.
+- Each address is looked up in free databases downloaded into the data
+  folder. Lookups are local; addresses are never sent to any other service.
+  Accuracy is city level at best: mobile carriers often place users in a hub
+  city, and VPN users appear at the VPN's exit. In order of preference:
+  - IP2Location LITE DB11 (IPv4), when `IP2LOCATION_TOKEN` holds a free
+    account's download token. Fetched at once when missing, then once a
+    month on a day in the month's first week, as IP2Location asks (it
+    disables accounts that download much more). Free with attribution, which
+    the page shows; the database itself must not be redistributed.
+  - MaxMind GeoLite2 City, when `MAXMIND_ACCOUNT_ID` and
+    `MAXMIND_LICENSE_KEY` are set (a free account; refreshed weekly; it also
+    estimates its own error, drawn as a faint circle). When GeoLite2 comes
+    first and only knows a wide area, a city the next database names inside
+    it is used instead.
+  - DB-IP Lite City (no account; monthly), only when neither account is set
+    up. The page credits DB-IP as its CC BY 4.0 licence requires.
+
+  When the first two name different cities, the stream's details show the
+  second opinion.
 - Places you know beat any database: `corrections` in `config.yaml` match
   one user's device (`user_devices`, which wins even over the home address),
   a Jellyfin device name, a network, or a user who is always in one place;

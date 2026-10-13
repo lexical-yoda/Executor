@@ -586,7 +586,7 @@ export interface Place {
   lon: number
   /** How far off the database says it may be, in km (GeoLite2 only). */
   radius_km?: number | null
-  /** geolite2, dbip, home (the server's own address) or correction (from the config). */
+  /** ip2location, geolite2, dbip, home (the server's own address) or correction (from the config). */
   source?: string | null
   /** Set when a vaguer database's area was narrowed to this city. */
   within?: { source: string; km: number } | null

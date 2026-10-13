@@ -42,6 +42,8 @@ services:
       TRUENAS_API_KEY: ${TRUENAS_API_KEY:-}
       # Optional Pi-hole app password, for the DNS card.
       PIHOLE_PASSWORD: ${PIHOLE_PASSWORD:-}
+      # Optional IP2Location LITE download token, for the DB11 database (free).
+      IP2LOCATION_TOKEN: ${IP2LOCATION_TOKEN:-}
       # Optional MaxMind account for the GeoLite2 City database (free).
       MAXMIND_ACCOUNT_ID: ${MAXMIND_ACCOUNT_ID:-}
       MAXMIND_LICENSE_KEY: ${MAXMIND_LICENSE_KEY:-}

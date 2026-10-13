@@ -27,7 +27,7 @@ function useOnce<T>(load: () => Promise<T>, deps: unknown[]) {
   return { data, error }
 }
 
-export const SOURCE_NAMES: Record<string, string> = { geolite2: 'GeoLite2', dbip: 'DB-IP' }
+export const SOURCE_NAMES: Record<string, string> = { ip2location: 'IP2Location', geolite2: 'GeoLite2', dbip: 'DB-IP' }
 
 export function sourceNote(place: Partial<Place>): string {
   if (place.source === 'home') return 'same address as the server'

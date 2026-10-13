@@ -352,6 +352,16 @@ export function Holonet({ tour }: { tour: boolean }) {
       {j && (
         <p className="attribution small muted">
           Locations are approximate (city level) unless corrected.{' '}
+          {/* IP2Location's terms ask for this sentence, with "IP geolocation" linking to them. */}
+          {j.history.geo_sources.some((g) => g.name === 'ip2location' && g.ready) && (
+            <>
+              Executor uses the IP2Location LITE database for{' '}
+              <a href="https://www.ip2location.com" target="_blank" rel="noreferrer noopener">
+                IP geolocation
+              </a>
+              .{' '}
+            </>
+          )}
           {j.history.geo_sources.some((g) => g.name === 'geolite2' && g.ready) && (
             <>
               This product includes GeoLite2 data created by MaxMind, available from{' '}
@@ -361,10 +371,15 @@ export function Holonet({ tour }: { tour: boolean }) {
               .{' '}
             </>
           )}
-          <a href="https://db-ip.com" target="_blank" rel="noreferrer noopener">
-            IP geolocation by DB-IP
-          </a>{' '}
-          (CC BY 4.0) · Map data ©{' '}
+          {j.history.geo_sources.some((g) => g.name === 'dbip') && (
+            <>
+              <a href="https://db-ip.com" target="_blank" rel="noreferrer noopener">
+                IP geolocation by DB-IP
+              </a>{' '}
+              (CC BY 4.0) ·{' '}
+            </>
+          )}
+          Map data ©{' '}
           <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer noopener">
             OpenStreetMap
           </a>{' '}
