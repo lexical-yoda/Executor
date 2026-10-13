@@ -4043,6 +4043,72 @@ ul.recap-list {
   }
 }
 
+/* On a phone the drawer covers the map, so a docked drawer offers to step
+   aside: it folds into a bar above the tabs, and the bar brings it back. */
+.drawer-map,
+.drawer-map-link {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .drawer-map {
+    display: inline-flex;
+    position: absolute;
+    top: 14px;
+    right: 60px;
+    z-index: 2;
+    margin: 0;
+    background: rgba(10, 17, 29, 0.9);
+  }
+  .drawer-map-link {
+    display: inline-flex;
+  }
+  .drawer-docked .drawer-kicker {
+    padding-right: 130px;
+  }
+}
+
+.drawer-peek {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(76px + env(safe-area-inset-bottom));
+  z-index: 35;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 6px 6px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border-strong);
+  background: #080c16;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+  animation: fade 0.2s ease both;
+}
+
+.drawer-peek-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.drawer-peek .icon-btn {
+  margin: 0;
+}
+
+/* Brought into view under the sticky header when a drawer steps aside. */
+.explorer {
+  scroll-margin-top: calc(var(--header-h, 69px) + 8px);
+}
+
 .drawer-backdrop {
   position: fixed;
   inset: var(--header-h, 69px) 0 0 0;

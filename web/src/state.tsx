@@ -37,6 +37,14 @@ export function ClockProvider({ children }: { children: ReactNode }) {
   return <ClockContext.Provider value={now}>{children}</ClockContext.Provider>
 }
 
+// A phone's drawer covers the whole screen. A drawer about the map can step
+// aside to show it; its contents find the way to do that here (null otherwise).
+export const ShowMapContext = createContext<(() => void) | null>(null)
+
+export function useShowMap(): (() => void) | null {
+  return useContext(ShowMapContext)
+}
+
 export function useApp(): AppState {
   const value = useContext(AppContext)
   if (!value) throw new Error('useApp outside AppProvider')

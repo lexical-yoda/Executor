@@ -1,8 +1,8 @@
-import { X } from 'lucide-react'
-import { lazy, type ReactNode, Suspense, useEffect, useRef } from 'react'
+import { ChevronUp, Map as MapIcon, X } from 'lucide-react'
+import { lazy, type ReactNode, Suspense, useEffect, useRef, useState } from 'react'
 import { collectAlerts } from '../alerts'
 import type { DrawerRef } from '../route'
-import { useApp } from '../state'
+import { ShowMapContext, useApp } from '../state'
 import { ActionDrawer, RunDrawer } from './ActionKit'
 import { BackupJobDrawer, FileBackupDrawer, StorageDrawer } from './Backups'
 import { BandwidthDrawer, CertificateDrawer } from './Edge'
@@ -112,6 +112,7 @@ function content(d: DrawerRef): ReactNode {
 // On Holonet these drawers explain what the map is showing (a viewer's path, a
 // stream, a place, the route), so the map stays lit and usable beside them.
 const MAP_KINDS = new Set(['user', 'stream', 'place', 'route'])
+const PEEK_LABELS: Record<string, string> = { user: 'Viewer and path', stream: 'Stream', place: 'Place', route: 'Stream route' }
 
 /** One side drawer for every detail view; full screen on a phone. */
 export function DrawerHost() {
@@ -119,6 +120,10 @@ export function DrawerHost() {
   const panel = useRef<HTMLElement>(null)
   const d = route.drawer
   const docked = !!d && route.deck === 'holonet' && MAP_KINDS.has(d.kind)
+  // On a phone a docked drawer can shrink to a bar so the map behind it can be
+  // used (a viewer's path replayed). It opens in full again for each new drawer,
+  // because the host is mounted afresh per drawer.
+  const [peek, setPeek] = useState(false)
 
   useEffect(() => {
     if (!d) return
@@ -131,18 +136,43 @@ export function DrawerHost() {
   }, [d, close])
 
   useEffect(() => {
-    document.documentElement.classList.toggle('drawer-open', !!d && d.kind !== 'focus')
+    document.documentElement.classList.toggle('drawer-open', !!d && d.kind !== 'focus' && !peek)
     document.documentElement.classList.toggle('drawer-docked', docked)
-  }, [d, docked])
+  }, [d, docked, peek])
+
+  const showMap = () => {
+    setPeek(true)
+    // The map heads the deck, and the page may be scrolled down to the card that opened this.
+    document.querySelector('.explorer')?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  }
 
   // "focus" only tells the settings page which service to show; it has no drawer.
   if (!d || d.kind === 'focus') return null
+  if (peek) {
+    return (
+      <div className="drawer-peek" role="region" aria-label="Details, folded away">
+        <button type="button" className="drawer-peek-open" onClick={() => setPeek(false)}>
+          <ChevronUp size={16} />
+          <span>{PEEK_LABELS[d.kind] ?? 'Details'}</span>
+          <span className="small muted">show details</span>
+        </button>
+        <button type="button" className="icon-btn" onClick={close} aria-label="Close details">
+          <X size={16} />
+        </button>
+      </div>
+    )
+  }
   return (
-    <>
+    <ShowMapContext.Provider value={docked ? showMap : null}>
       {/* The page behind dims, and a click on it closes the drawer. A docked drawer
           leaves the page alone, so the map's own controls (replay) keep working. */}
       {!docked && <div className="drawer-backdrop" onClick={close} aria-hidden="true" />}
       <aside className="drawer" ref={panel} tabIndex={-1} role="dialog" aria-label="Details">
+        {docked && (
+          <button type="button" className="btn btn-ghost btn-small drawer-map" onClick={showMap}>
+            <MapIcon size={14} /> Map
+          </button>
+        )}
         <button type="button" className="icon-btn drawer-close" onClick={close} aria-label="Close details">
           <X size={18} />
         </button>
@@ -150,6 +180,6 @@ export function DrawerHost() {
           <Suspense fallback={<p className="muted small">Loading…</p>}>{content(d)}</Suspense>
         </div>
       </aside>
-    </>
+    </ShowMapContext.Provider>
   )
 }

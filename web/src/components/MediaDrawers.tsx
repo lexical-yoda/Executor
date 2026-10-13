@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { api, type MediaUser, type Place, type PlaceGroup, type Sighting } from '../api'
 import { ago, bytes, duration } from '../format'
 import { placeKey, streamKey } from '../map/types'
-import { useApp, useClock } from '../state'
+import { useApp, useClock, useShowMap } from '../state'
 import { AttachedActions } from './ActionKit'
 import { placeName, Poster, queueTone, seasons } from './Media'
 import { Empty, Facts, RowButton, SourceNote } from './ui'
@@ -266,6 +266,7 @@ export function PlaceDrawer({ id }: { id: string }) {
 
 export function UserDrawer({ id }: { id: string }) {
   const { route, open } = useApp()
+  const showMap = useShowMap()
   const trail = useOnce(() => api.mediaTrail(id, 90), [id])
   const users = useOnce(() => api.mediaUsers(90), [])
   const user: MediaUser | undefined = users.data?.users.find((u) => u.id === id)
@@ -286,6 +287,12 @@ export function UserDrawer({ id }: { id: string }) {
         </button>
       )}
       {route.deck === 'holonet' && <p className="small muted">Their path is drawn on the map; press play there to replay it.</p>}
+      {/* Phones only: there the drawer covers the map. */}
+      {showMap && (
+        <button type="button" className="btn btn-ghost btn-small drawer-map-link" onClick={showMap}>
+          <MapIcon size={14} /> Show the path on the map
+        </button>
+      )}
       <Facts
         items={[
           ['Sessions', String(sightings.length)],
