@@ -109,11 +109,16 @@ function content(d: DrawerRef): ReactNode {
   }
 }
 
+// On Holonet these drawers explain what the map is showing (a viewer's path, a
+// stream, a place, the route), so the map stays lit and usable beside them.
+const MAP_KINDS = new Set(['user', 'stream', 'place', 'route'])
+
 /** One side drawer for every detail view; full screen on a phone. */
 export function DrawerHost() {
   const { route, close } = useApp()
   const panel = useRef<HTMLElement>(null)
   const d = route.drawer
+  const docked = !!d && route.deck === 'holonet' && MAP_KINDS.has(d.kind)
 
   useEffect(() => {
     if (!d) return
@@ -127,14 +132,16 @@ export function DrawerHost() {
 
   useEffect(() => {
     document.documentElement.classList.toggle('drawer-open', !!d && d.kind !== 'focus')
-  }, [d])
+    document.documentElement.classList.toggle('drawer-docked', docked)
+  }, [d, docked])
 
   // "focus" only tells the settings page which service to show; it has no drawer.
   if (!d || d.kind === 'focus') return null
   return (
     <>
-      {/* The page behind dims, and a click on it closes the drawer. */}
-      <div className="drawer-backdrop" onClick={close} aria-hidden="true" />
+      {/* The page behind dims, and a click on it closes the drawer. A docked drawer
+          leaves the page alone, so the map's own controls (replay) keep working. */}
+      {!docked && <div className="drawer-backdrop" onClick={close} aria-hidden="true" />}
       <aside className="drawer" ref={panel} tabIndex={-1} role="dialog" aria-label="Details">
         <button type="button" className="icon-btn drawer-close" onClick={close} aria-label="Close details">
           <X size={18} />

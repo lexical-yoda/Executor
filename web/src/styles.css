@@ -4035,6 +4035,14 @@ ul.recap-list {
   }
 }
 
+/* A docked drawer (Holonet, about the map) sits beside the page instead of over
+   it: the page narrows so the map, its controls and the replay bar stay in view. */
+@media (min-width: 761px) {
+  .drawer-docked .layout.deck-holonet {
+    margin-right: min(470px, 100vw);
+  }
+}
+
 .drawer-backdrop {
   position: fixed;
   inset: var(--header-h, 69px) 0 0 0;
